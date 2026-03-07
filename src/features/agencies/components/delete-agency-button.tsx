@@ -78,6 +78,11 @@ export function DeleteAgencyButton({
   // ── confirm ──────────────────────────────────────────────────────────────
   return (
     <span className="flex flex-col items-end gap-1">
+      {/* Confirmation question */}
+      <span className="max-w-[220px] text-right text-xs font-medium text-slate-700">
+        Delete &ldquo;{name}&rdquo;?
+      </span>
+
       {/* Error from previous attempt */}
       {error && (
         <span className="max-w-[220px] text-right text-xs text-red-500">

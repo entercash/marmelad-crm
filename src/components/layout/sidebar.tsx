@@ -9,6 +9,7 @@ import {
   Receipt,
   Building2,
   CreditCard,
+  FileCheck2,
   Settings,
   Activity,
 } from "lucide-react";
@@ -41,8 +42,9 @@ const navigation: NavGroup[] = [
   {
     label: "Operations",
     items: [
-      { label: "Expenses", href: "/expenses", icon: Receipt },
-      { label: "Agencies", href: "/agencies", icon: Building2 },
+      { label: "Expenses",     href: "/expenses",    icon: Receipt },
+      { label: "Agencies",    href: "/agencies",    icon: Building2 },
+      { label: "White Pages", href: "/white-pages", icon: FileCheck2 },
       { label: "Ad Accounts", href: "/ad-accounts", icon: CreditCard },
     ],
   },

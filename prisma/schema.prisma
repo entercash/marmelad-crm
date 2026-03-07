@@ -673,3 +673,41 @@ model RawImportBatch {
   @@index([source, entityType, createdAt])
   @@map("raw_import_batches")
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 9 — WHITE PAGES
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Lifecycle status of a white page (landing page for ad network moderation).
+/// Tracks the page from initial submission through active use or rejection.
+enum WhitePageStatus {
+  PREMODERATION        // Submitted; waiting for ad network review
+  ACCOUNT_ISSUED       // Ad network issued an account for this page
+  WARMUP_STARTED       // Account warm-up phase has begun
+  IN_PROGRESS          // Page is actively running traffic
+  PREMODERATION_FAILED // Failed the ad network moderation review
+  ACCOUNT_BANNED       // The associated account was banned
+}
+
+/// A white page — a landing page used to pass ad network moderation.
+/// Tracks the page asset's lifecycle, credentials, and legal metadata
+/// for the media buying team.
+model WhitePage {
+  id              String          @id @default(cuid())
+  transferDate    DateTime        @db.Date  // Date the page was transferred / registered
+  geo             String                    // Target GEO code (e.g. "US", "DE")
+  url             String                    // URL of the white page
+  topic           String?                   // Ad topic / vertical (e.g. "Finance", "Health")
+  zohoEmail       String?                   // Zoho account email associated with this page
+  password        String?                   // Account password (plaintext — internal tool only)
+  legalEntityData String?                   // Legal entity details (name, registration, address)
+  taxNumber       String?                   // Tax / VAT number
+  status          WhitePageStatus           // Current lifecycle status
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([transferDate])
+  @@map("white_pages")
+}

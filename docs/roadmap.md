@@ -67,6 +67,17 @@
 - [x] Delete: two-step confirmation inline per row, handles constraint errors gracefully
 - [x] New shared UI primitives: `Input`, `Label`, `Textarea`, `Dialog` (portal-based)
 
+### White Pages CRUD ✅
+- [x] Schema: new `WhitePage` model + `WhitePageStatus` enum (6 values)
+- [x] Migration: `20260308000000_white_pages`
+- [x] Server actions: create, update, delete with Zod validation and field-level errors
+- [x] White Pages list page: table with all 9 data columns + actions
+- [x] Status badge: colour-coded, Russian labels in UI (DB stores enum value)
+- [x] Create dialog: "Add White Page" button opens form, saves, refreshes table
+- [x] Edit dialog: pre-filled form per row (date, GEO, URL, topic, zoho email, password, legal entity, tax number, status)
+- [x] Delete: two-step confirmation inline per row
+- [x] Sidebar: "White Pages" link added to Operations group
+
 ### P&L Engine
 - [ ] Campaign mapping UI (link Taboola campaign ↔ Keitaro campaign)
 - [ ] ROI calculation: (netRevenue - spend) / spend × 100

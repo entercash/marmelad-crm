@@ -76,8 +76,9 @@ export default async function AgenciesPage() {
                     Commission
                   </th>
                   <th className="px-4 py-3 text-right font-medium text-slate-500">
-                    Crypto
+                    Crypto Fee %
                   </th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Notes</th>
                   <th className="px-4 py-3 font-medium text-slate-500">Updated</th>
                   <th className="px-4 py-3">
                     <span className="sr-only">Actions</span>
@@ -170,6 +171,20 @@ export default async function AgenciesPage() {
                       <td className="px-4 py-3 text-right font-mono text-slate-700">
                         {agency.cryptoPaymentPercent !== null ? (
                           formatPercent(agency.cryptoPaymentPercent)
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+
+                      {/* Notes */}
+                      <td className="px-4 py-3">
+                        {agency.notes ? (
+                          <span
+                            className="block max-w-[200px] truncate text-slate-600"
+                            title={agency.notes}
+                          >
+                            {agency.notes}
+                          </span>
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}

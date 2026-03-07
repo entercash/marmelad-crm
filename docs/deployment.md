@@ -312,6 +312,47 @@ REDIS_URL="redis://redis:6379"
 
 ---
 
+### 8. Prisma authentication failure — `Authentication failed against database server at postgres`
+
+**Symptom:** App connects to the right host but Prisma throws:
+```
+PrismaClientInitializationError: Authentication failed against database server at `postgres`,
+the provided database credentials for `postgres` are not valid.
+```
+
+**Root cause — stale postgres volume:** PostgreSQL reads `POSTGRES_USER` and `POSTGRES_PASSWORD` from `docker-compose.yml` **only once** — during the very first initialisation of the data directory. If the `postgres_data` Docker volume already exists from a previous `docker compose up` (e.g. from an earlier deployment, an image rebuild, or a credential change), Postgres ignores the new environment variables completely and keeps using the credentials baked into the volume.
+
+Changing `POSTGRES_PASSWORD` in `docker-compose.yml` has **no effect** on an existing volume. The app uses the new credentials; Postgres still enforces the old ones → authentication fails.
+
+**Fix:**
+
+> ⚠️ This destroys all data in the database. Run migrations and seed after.
+
+```bash
+# 1. Stop all containers and destroy volumes
+docker compose down -v
+
+# 2. Rebuild images and recreate containers (Postgres re-initialises with correct credentials)
+docker compose up -d --build
+
+# 3. Apply migrations
+docker compose exec app npx prisma migrate deploy
+
+# 4. Seed reference data (only needed once)
+docker compose exec app npm run db:seed
+```
+
+**Prevention:** Keep `POSTGRES_PASSWORD` in `docker-compose.yml` and the password component of `DATABASE_URL` in `.env` identical. If you ever need to change the password, always run `docker compose down -v` first to drop the old volume.
+
+**Local dev with `.env.local`:** To avoid editing `.env` for local development, create `.env.local` (gitignored by Next.js) with the localhost overrides. This file takes precedence over `.env` during `npm run dev`:
+```env
+# .env.local — local dev overrides (never commit this file)
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/marmelad_crm?schema=public"
+REDIS_URL="redis://localhost:6379"
+```
+
+---
+
 ## Prisma Studio (database browser)
 
 For local inspection of the database:

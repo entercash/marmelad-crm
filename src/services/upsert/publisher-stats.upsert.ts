@@ -84,7 +84,6 @@ export async function upsertPublisherStats(
           select: { id: true },
         });
       }),
-      { timeout: 60_000 },
     );
 
     updated += chunk.length;

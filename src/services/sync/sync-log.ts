@@ -8,7 +8,7 @@
  * Also handles writing RawImportBatch records for debugging/re-processing.
  */
 
-import { SyncStatus } from "@prisma/client";
+import { Prisma, SyncStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toErrorMessage, toErrorStack } from "@/lib/errors";
 import type { SyncCounter } from "./types";
@@ -30,7 +30,9 @@ export async function createSyncLog(input: CreateSyncLogInput): Promise<string> 
       trafficSourceId: input.trafficSourceId,
       status: SyncStatus.RUNNING,
       startedAt: new Date(),
-      meta: input.meta ?? {},
+      // Cast: meta values are always JSON-serializable job-context data.
+      // Record<string, unknown> is too wide for Prisma's InputJsonValue.
+      meta: (input.meta ?? {}) as Prisma.InputJsonValue,
     },
     select: { id: true },
   });

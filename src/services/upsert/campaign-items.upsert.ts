@@ -82,7 +82,6 @@ export async function upsertCampaignItems(
         select: { id: true },
       }),
     ),
-    { timeout: 30_000 },
   );
 
   return { updated: items.length };

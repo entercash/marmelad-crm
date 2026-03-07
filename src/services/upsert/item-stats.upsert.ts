@@ -59,7 +59,6 @@ export async function upsertItemStats(
           select: { id: true },
         });
       }),
-      { timeout: 30_000 },
     );
 
     updated += chunk.length;

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Building2, ExternalLink, Pencil, Plus } from "lucide-react";
 
 import { PageHeader }         from "@/components/shared/page-header";

@@ -65,7 +65,6 @@ export async function upsertCampaignStats(
           select: { id: true },
         });
       }),
-      { timeout: 30_000 },
     );
 
     updated += chunk.length;

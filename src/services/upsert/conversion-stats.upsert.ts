@@ -130,7 +130,6 @@ export async function upsertConversionStats(
             select: { id: true },
           });
         }),
-        { timeout: 30_000 },
       );
 
       updated += chunk.length;

@@ -66,7 +66,6 @@ export async function upsertCampaigns(
         select: { id: true },
       }),
     ),
-    { timeout: 30_000 },
   );
 
   // We can't easily distinguish insert vs update from Prisma upsert,

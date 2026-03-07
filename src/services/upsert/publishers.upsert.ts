@@ -90,7 +90,6 @@ export async function upsertPublishers(
           select: { id: true },
         }),
       ),
-      { timeout: 30_000 },
     );
 
     updated += chunk.length;

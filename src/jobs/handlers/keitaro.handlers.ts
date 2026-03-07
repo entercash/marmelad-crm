@@ -23,8 +23,14 @@ export async function handleKeitaroJob(
       return handleConversionStats(job as Job<typeof data>);
 
     default: {
-      const _exhaustive: never = data;
-      throw new ValidationError(`Unknown Keitaro job type: ${JSON.stringify(_exhaustive)}`);
+      // Note: KeitaroJobPayload is currently a single-variant type alias, not a union.
+      // TypeScript can only narrow a switch default to `never` when the discriminant
+      // belongs to an actual union type (A | B | C). A single-type alias leaves `data`
+      // typed as KeitaroConversionStatsDailyPayload in the default branch, so the
+      // `never` exhaustiveness variable would be a type error. When a second payload
+      // variant is added (making KeitaroJobPayload a real union), restore the check:
+      //   const _exhaustive: never = data;
+      throw new ValidationError(`Unknown Keitaro job type: ${JSON.stringify(data)}`);
     }
   }
 }

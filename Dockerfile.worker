@@ -35,7 +35,10 @@ COPY tsconfig.json   ./
 COPY prisma          ./prisma
 COPY src             ./src
 
-# Generate the Prisma client so the worker can access the database.
+# Purge any stale Prisma artifacts from the deps stage before regenerating.
+RUN rm -rf node_modules/.prisma
+
+# Generate Prisma Client for the current platform (debian-openssl-3.0.x).
 RUN npx prisma generate
 
 # Run the TypeScript worker directly via tsx (no separate compile step).

@@ -31,7 +31,13 @@ COPY . .
 # The standalone runner copies it, so it must be present.
 RUN mkdir -p /app/public
 
-# Generate the Prisma client before building Next.js.
+# Purge any stale Prisma artifacts copied from the deps stage.
+# npm ci in deps triggers Prisma postinstall which may write a platform-specific
+# engine binary (possibly linux-musl if that layer is stale in Docker cache).
+# Wiping .prisma here guarantees prisma generate always runs clean on Debian.
+RUN rm -rf node_modules/.prisma
+
+# Generate Prisma Client for the current platform (debian-openssl-3.0.x).
 # The client is embedded in the standalone output so it ships without the
 # full prisma devDependency at runtime.
 RUN npx prisma generate

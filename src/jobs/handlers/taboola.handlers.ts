@@ -11,15 +11,15 @@
  */
 
 import type { Job } from "bullmq";
-import { ValidationError } from "@/lib/errors";
-import { isValidDateStr } from "@/lib/date";
-import type { TaboolaJobPayload } from "@/jobs/types";
+import { ValidationError } from "../../lib/errors";
+import { isValidDateStr } from "../../lib/date";
+import type { TaboolaJobPayload } from "../types";
 import {
   syncTaboolaCampaigns,
   syncTaboolaCampaignStatsDaily,
   syncTaboolaItemStatsDaily,
   syncTaboolaPublisherStatsDaily,
-} from "@/services/sync/taboola.sync";
+} from "../../services/sync/taboola.sync";
 
 // ─── Main router ──────────────────────────────────────────────────────────────
 

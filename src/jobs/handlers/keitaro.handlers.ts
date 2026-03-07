@@ -6,10 +6,10 @@
  */
 
 import type { Job } from "bullmq";
-import { ValidationError } from "@/lib/errors";
-import { isValidDateStr } from "@/lib/date";
-import type { KeitaroJobPayload } from "@/jobs/types";
-import { syncKeitaroConversionStatsDaily } from "@/services/sync/keitaro.sync";
+import { ValidationError } from "../../lib/errors";
+import { isValidDateStr } from "../../lib/date";
+import type { KeitaroJobPayload } from "../types";
+import { syncKeitaroConversionStatsDaily } from "../../services/sync/keitaro.sync";
 
 // ─── Main router ──────────────────────────────────────────────────────────────
 

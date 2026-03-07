@@ -1,7 +1,11 @@
 # ─── Stage 1: Install dependencies ───────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 
-RUN apk add --no-cache libc6-compat
+# Prisma query engine requires OpenSSL at both build and runtime.
+# bookworm-slim ships OpenSSL 3 (Debian 12), which matches the generated engine.
+RUN apt-get update \
+ && apt-get install -y openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -12,7 +16,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # ─── Stage 2: Build the Next.js app ──────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
+
+RUN apt-get update \
+ && apt-get install -y openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -34,7 +42,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ─── Stage 3: Minimal production image ────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
+
+RUN apt-get update \
+ && apt-get install -y openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -42,8 +54,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Non-root user for security.
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser  --system --uid 1001 nextjs
+# bookworm uses groupadd/useradd (not Alpine's addgroup/adduser).
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd  --system --uid 1001 --gid nodejs nextjs
 
 # Static public assets (gitkeep ensures the directory always exists in source).
 RUN mkdir -p ./public

@@ -15,8 +15,8 @@
  */
 
 import { Worker } from "bullmq";
-import { getBullMQConnection } from "@/lib/bullmq-connection";
-import { toErrorMessage } from "@/lib/errors";
+import { getBullMQConnection } from "../lib/bullmq-connection";
+import { toErrorMessage } from "../lib/errors";
 import { handleTaboolaJob } from "./handlers/taboola.handlers";
 import { handleKeitaroJob } from "./handlers/keitaro.handlers";
 import type { SyncJobPayload } from "./types";

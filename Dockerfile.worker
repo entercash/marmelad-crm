@@ -1,7 +1,11 @@
 # ─── Stage 1: Install ALL dependencies (tsx needed at runtime) ───────────────
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 
-RUN apk add --no-cache libc6-compat
+# Prisma query engine requires OpenSSL at both build and runtime.
+# bookworm-slim ships OpenSSL 3 (Debian 12), which matches the generated engine.
+RUN apt-get update \
+ && apt-get install -y openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -10,9 +14,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # ─── Stage 2: Runtime image ───────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 
-RUN apk add --no-cache libc6-compat
+RUN apt-get update \
+ && apt-get install -y openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -33,5 +39,6 @@ COPY src             ./src
 RUN npx prisma generate
 
 # Run the TypeScript worker directly via tsx (no separate compile step).
-# tsx resolves tsconfig paths (@/*) natively.
+# tsx resolves tsconfig paths (@/*) natively; path aliases in src/jobs/* have
+# been replaced with relative imports to avoid any Node ESM resolution edge-cases.
 CMD ["node", "--import", "tsx/esm", "src/jobs/worker.ts"]

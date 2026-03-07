@@ -11,7 +11,7 @@
  */
 
 import { Queue } from "bullmq";
-import { getBullMQConnection } from "@/lib/bullmq-connection";
+import { getBullMQConnection } from "../lib/bullmq-connection";
 import type { SyncJobPayload, AggregateJobPayload } from "./types";
 
 // ─── Shared defaults ──────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export const aggregateQueue = new Queue<AggregateJobPayload>("pnl-aggregate", {
 
 // ─── Enqueue helpers ──────────────────────────────────────────────────────────
 
-import { toApiDate, yesterday } from "@/lib/date";
+import { toApiDate, yesterday } from "../lib/date";
 import type {
   TaboolaCampaignsPayload,
   TaboolaCampaignStatsDailyPayload,

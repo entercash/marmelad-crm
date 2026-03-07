@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// AGENCY & ACCOUNT MANAGEMENT
+// ─────────────────────────────────────────────
+
+model Agency {
+  id         String      @id @default(cuid())
+  name       String
+  adAccounts AdAccount[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@map("agencies")
+}
+
+model AdAccount {
+  id        String   @id @default(cuid())
+  name      String
+  platform  String   // "taboola" | "facebook" | "google" | etc.
+  accountId String   // external account ID from the platform
+  agencyId  String?
+  isActive  Boolean  @default(true)
+
+  agency    Agency?  @relation(fields: [agencyId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([platform, accountId])
+  @@map("ad_accounts")
+}
+
+// ─────────────────────────────────────────────
+// CUSTOM EXPENSES
+// ─────────────────────────────────────────────
+
+model Expense {
+  id       String   @id @default(cuid())
+  name     String
+  amount   Decimal  @db.Decimal(12, 2)
+  currency String   @default("USD")
+  category String   // "tools" | "staff" | "services" | "other"
+  date     DateTime
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
+// PUBLISHER LISTS — blacklist / whitelist
+// ─────────────────────────────────────────────
+
+model PublisherList {
+  id       String            @id @default(cuid())
+  name     String
+  type     PublisherListType
+  platform String            // "taboola" | etc.
+  entries  PublisherEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("publisher_lists")
+}
+
+model PublisherEntry {
+  id            String        @id @default(cuid())
+  publisherId   String
+  publisherName String?
+  listId        String
+
+  list          PublisherList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  addedAt       DateTime      @default(now())
+
+  @@unique([listId, publisherId])
+  @@map("publisher_entries")
+}
+
+enum PublisherListType {
+  BLACKLIST
+  WHITELIST
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM / AUDIT
+// ─────────────────────────────────────────────
+
+model SyncLog {
+  id         String    @id @default(cuid())
+  source     String    // "taboola" | "keitaro"
+  type       String    // "campaigns" | "publishers" | "stats" | "conversions"
+  status     String    // "success" | "error" | "partial"
+  startedAt  DateTime
+  finishedAt DateTime?
+  error      String?
+  meta       Json?
+
+  @@map("sync_logs")
+}

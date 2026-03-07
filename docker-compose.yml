@@ -1,4 +1,6 @@
 services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: marmelad-postgres
@@ -12,11 +14,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Explicit -U and -d match the environment variables above.
+      # Using variable substitution ($$VAR) keeps it DRY if you ever change
+      # the values, but hardcoding is clearer for an MVP.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d marmelad_crm"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
+  # ─── Redis ──────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: marmelad-redis
@@ -30,7 +37,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
 
+  # ─── Next.js web app ────────────────────────────────────────────────────────
   app:
     build:
       context: .
@@ -41,6 +50,21 @@ services:
       - .env
     ports:
       - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── BullMQ worker ──────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: marmelad-worker
+    restart: unless-stopped
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy

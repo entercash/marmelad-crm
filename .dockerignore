@@ -1,0 +1,59 @@
+# ─── Node / package manager ───────────────────────────────────────────────────
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+.yarn
+
+# ─── Next.js build output ─────────────────────────────────────────────────────
+.next
+out
+build
+
+# ─── Version control ──────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ─── Environment files (never bake secrets into the image) ────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production.local
+# Keep .env.example — it has no secrets and is useful for reference
+
+# ─── Prisma generated / SQLite ────────────────────────────────────────────────
+prisma/*.db
+prisma/*.db-journal
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+logs
+*.log
+
+# ─── OS / editor junk ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+*.swo
+*.pem
+
+# ─── TypeScript incremental build cache ───────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Test / coverage ──────────────────────────────────────────────────────────
+coverage
+__tests__
+*.test.ts
+*.spec.ts
+
+# ─── Docs (optional — saves a few KB in the image) ───────────────────────────
+docs
+README.md

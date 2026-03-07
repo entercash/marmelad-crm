@@ -60,12 +60,11 @@ cp .env.example .env
 # 3. Start Postgres + Redis (background)
 docker compose up -d postgres redis
 
-# 4. Apply database migrations
-npm run db:migrate     # creates tables via prisma migrate dev
-# Or on a fresh DB without a migrations history:
-# npm run db:push      # alternative: push schema directly (dev only)
+# 4. Apply database migrations (creates all tables)
+npm run db:migrate:prod   # prisma migrate deploy — applies pending migrations
 
 # 5. Seed reference data (TrafficSources, ExpenseCategories)
+#    Only needed once — idempotent but no need to repeat on each restart
 npm run db:seed
 
 # 6. Start the Next.js dev server
@@ -129,10 +128,14 @@ KEITARO_API_KEY=...
 # 3. Build and start all services
 docker compose up -d --build
 
-# 4. Run database migrations (one-time, after first build)
+# 4. Apply database migrations
+#    prisma migrate deploy applies all pending migrations in order.
+#    It is safe to run on every deployment — it is a no-op if already up-to-date.
 docker compose exec app npx prisma migrate deploy
 
-# 5. Seed reference data (one-time)
+# 5. Seed reference data
+#    Only needed once. The seed is idempotent but there is no reason to re-run
+#    it on every deployment — it does not create new data on subsequent runs.
 docker compose exec app npm run db:seed
 ```
 
@@ -144,7 +147,7 @@ App is available at: http://<server-ip>:3000
 git pull
 docker compose up -d --build
 
-# Run migrations if schema changed
+# Always run migrate deploy after pulling — it is a no-op if no new migrations.
 docker compose exec app npx prisma migrate deploy
 ```
 
@@ -185,16 +188,43 @@ All variables are read from `.env` by the `app` and `worker` containers (via `en
 
 ## Database Migrations
 
-Migrations are managed by Prisma Migrate.
+Migrations are managed by Prisma Migrate. The initial migration (`20260307000000_init`) is committed at `prisma/migrations/` and covers the full v1 schema (all 19 tables, 8 enums, all indexes).
 
 | Command | When to use |
 |---------|-------------|
-| `npm run db:migrate` | Local development — creates a new migration and applies it |
-| `npm run db:migrate:prod` (= `prisma migrate deploy`) | Production — applies pending migrations without creating new ones |
-| `npm run db:push` | Local dev only — push schema without migration history (not for production) |
-| `npm run db:seed` | One-time seeding of TrafficSources and ExpenseCategories |
+| `npm run db:migrate:prod` | **All environments** — applies all pending migrations in order. Safe to run on every deployment (no-op if up to date). Equivalent to `npx prisma migrate deploy`. |
+| `npm run db:migrate` | **Local dev only** — creates a new migration file from schema changes and applies it. Never run in production. |
+| `npm run db:push` | **Local dev only** — pushes schema without creating a migration file. Use only for rapid prototyping. ⚠️ Do not use in production or on any database that uses `migrate deploy`. |
+| `npm run db:seed` | One-time — seeds TrafficSources and ExpenseCategories. Safe to re-run (idempotent upserts), but not needed after the first run. |
 
-**Important:** Run `prisma migrate deploy` after every deployment that changed the schema. Do this before the new `app` container starts serving traffic to avoid schema mismatches.
+### Baselining an existing database (already created with `db push`)
+
+The production database was initially set up with `prisma db push` before migrations existed. To register the current migration as already applied **without re-running the SQL** (which would fail because the tables already exist):
+
+```bash
+# On the server, inside the running app container:
+docker compose exec app npx prisma migrate resolve --applied "20260307000000_init"
+
+# Verify — should show the migration as "applied":
+docker compose exec app npx prisma migrate status
+```
+
+After baselining, all future migrations will use `prisma migrate deploy` normally.
+
+### Adding a new migration (future schema changes)
+
+```bash
+# 1. Edit prisma/schema.prisma
+# 2. Generate and apply the migration locally
+npm run db:migrate          # prisma migrate dev --name <description>
+# 3. Commit the new migration file
+git add prisma/migrations/
+git commit -m "feat(db): add <description>"
+# 4. Deploy
+docker compose exec app npx prisma migrate deploy
+```
+
+**Rule:** `prisma migrate deploy` runs on every deployment. It is always safe — if there are no new migrations it is a no-op.
 
 ---
 

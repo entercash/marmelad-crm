@@ -81,7 +81,7 @@ export const whitePageSchema = z.object({
     .transform((v) => v.trim()),
 
   status: z.enum(WHITE_PAGE_STATUSES, {
-    errorMap: () => ({ message: "Status is required" }),
+    message: "Status is required",
   }),
 
   // Optional fields — empty string → null

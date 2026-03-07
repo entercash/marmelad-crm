@@ -7,7 +7,7 @@ import { EmptyState }            from "@/components/shared/empty-state";
 import { Button }                from "@/components/ui/button";
 import { WhitePageDialog }       from "@/features/white-pages/components/white-page-dialog";
 import { DeleteWhitePageButton } from "@/features/white-pages/components/delete-white-page-button";
-import { getWhitePages }         from "@/features/white-pages/queries";
+import { getWhitePages, type WhitePageRow } from "@/features/white-pages/queries";
 import {
   WHITE_PAGE_STATUS_LABELS,
   WHITE_PAGE_STATUS_BADGE_CLASS,
@@ -17,7 +17,12 @@ import { formatDate } from "@/lib/format";
 export const metadata = { title: "White Pages" };
 
 export default async function WhitePagesPage() {
-  const whitePages = await getWhitePages();
+  let whitePages: WhitePageRow[] = [];
+  try {
+    whitePages = await getWhitePages();
+  } catch (err) {
+    console.error("[WhitePagesPage] Failed to fetch white pages:", err);
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">

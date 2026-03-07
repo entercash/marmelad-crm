@@ -107,8 +107,18 @@ model TrafficSource {
 /// An advertising agency that manages one or more ad accounts.
 /// Optional relationship — ad accounts can exist without an agency.
 model Agency {
-  id         String      @id @default(cuid())
-  name       String
+  id      String  @id @default(cuid())
+  name    String
+
+  // Contact & identification
+  website String? // Agency website URL
+  contact String? // Primary contact — name, email, or phone (freeform)
+
+  // Financial terms
+  accountCostUsd       Decimal? @db.Decimal(12, 2) // Cost per account in USD
+  commissionPercent    Decimal? @db.Decimal(8, 4)  // Agency commission rate (0–100)
+  cryptoPaymentPercent Decimal? @db.Decimal(8, 4)  // Portion of payment in crypto (0–100)
+
   notes      String?
   adAccounts AdAccount[]
 

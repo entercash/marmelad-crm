@@ -1,3 +1,7 @@
+// Marmelad CRM — Production Database Schema
+// Designed for: media buying operations, Taboola spend + Keitaro conversions
+// Architecture: multi-source ready, normalized, audit-friendly
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,105 +11,654 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────
-// AGENCY & ACCOUNT MANAGEMENT
-// ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ══════════════════════════════════════════════════════════════════════════════
 
-model Agency {
-  id         String      @id @default(cuid())
-  name       String
-  adAccounts AdAccount[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-
-  @@map("agencies")
+/// Classifies a data source by what it provides.
+/// SPEND_SOURCE  → provides impressions, clicks, spend (e.g. Taboola)
+/// CONVERSION_SOURCE → provides leads, conversions, revenue (e.g. Keitaro)
+/// BOTH → a platform that does both (rare but possible)
+enum TrafficSourceType {
+  SPEND_SOURCE
+  CONVERSION_SOURCE
+  BOTH
 }
 
-model AdAccount {
-  id        String   @id @default(cuid())
-  name      String
-  platform  String   // "taboola" | "facebook" | "google" | etc.
-  accountId String   // external account ID from the platform
-  agencyId  String?
-  isActive  Boolean  @default(true)
-
-  agency    Agency?  @relation(fields: [agencyId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([platform, accountId])
-  @@map("ad_accounts")
+/// Status of a background sync operation.
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL // completed but with per-record errors
+  FAILED
 }
 
-// ─────────────────────────────────────────────
-// CUSTOM EXPENSES
-// ─────────────────────────────────────────────
-
-model Expense {
-  id       String   @id @default(cuid())
-  name     String
-  amount   Decimal  @db.Decimal(12, 2)
-  currency String   @default("USD")
-  category String   // "tools" | "staff" | "services" | "other"
-  date     DateTime
-  notes    String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("expenses")
+/// Lifecycle status of a campaign synced from a traffic source.
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+  ARCHIVED
 }
 
-// ─────────────────────────────────────────────
-// PUBLISHER LISTS — blacklist / whitelist
-// ─────────────────────────────────────────────
-
-model PublisherList {
-  id       String            @id @default(cuid())
-  name     String
-  type     PublisherListType
-  platform String            // "taboola" | etc.
-  entries  PublisherEntry[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("publisher_lists")
+/// Lifecycle status of a campaign item (creative/ad unit).
+enum CampaignItemStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+  ARCHIVED
 }
 
-model PublisherEntry {
-  id            String        @id @default(cuid())
-  publisherId   String
-  publisherName String?
-  listId        String
-
-  list          PublisherList @relation(fields: [listId], references: [id], onDelete: Cascade)
-
-  addedAt       DateTime      @default(now())
-
-  @@unique([listId, publisherId])
-  @@map("publisher_entries")
-}
-
+/// Controls whether a publisher list is used to block or allow publishers.
 enum PublisherListType {
   BLACKLIST
   WHITELIST
 }
 
-// ─────────────────────────────────────────────
-// SYSTEM / AUDIT
-// ─────────────────────────────────────────────
+/// Soft-removal status for publisher list entries.
+/// REMOVED entries are kept for audit purposes.
+enum ListEntryStatus {
+  ACTIVE
+  REMOVED
+}
 
+/// How a campaign mapping between spend and conversion sides was established.
+enum MappingType {
+  MANUAL // user explicitly linked the campaigns
+  AUTO   // future: matched automatically by URL parameter or naming pattern
+}
+
+/// Recurrence type for operational expenses.
+enum ExpenseRecurrence {
+  ONE_TIME
+  WEEKLY
+  MONTHLY
+  ANNUAL
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 1 — TRAFFIC SOURCES & ACCOUNTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// The root of the multi-source architecture.
+/// Every campaign, publisher, and stat record is anchored to a TrafficSource.
+/// Seeded at startup — not created by users at runtime.
+/// Examples: { slug: "taboola", type: SPEND_SOURCE }, { slug: "keitaro", type: CONVERSION_SOURCE }
+model TrafficSource {
+  id       String            @id @default(cuid())
+  slug     String            @unique // machine key: "taboola", "keitaro", "facebook"
+  name     String                    // display name: "Taboola", "Keitaro"
+  type     TrafficSourceType
+  isActive Boolean           @default(true)
+
+  adAccounts     AdAccount[]
+  campaigns      Campaign[]
+  publishers     Publisher[]
+  publisherLists PublisherList[]
+  syncLogs       SyncLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("traffic_sources")
+}
+
+/// An advertising agency that manages one or more ad accounts.
+/// Optional relationship — ad accounts can exist without an agency.
+model Agency {
+  id         String      @id @default(cuid())
+  name       String
+  notes      String?
+  adAccounts AdAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("agencies")
+}
+
+/// A billing/advertiser account on a specific traffic source platform.
+/// This is what Taboola calls an "account" and what holds campaigns.
+/// One agency may own multiple accounts across multiple platforms.
+model AdAccount {
+  id              String        @id @default(cuid())
+  name            String        // human label, e.g. "Agency X — Taboola Main"
+  externalId      String        // account ID on the external platform
+  trafficSourceId String
+  agencyId        String?
+  currency        String        @default("USD")
+  isActive        Boolean       @default(true)
+
+  trafficSource TrafficSource @relation(fields: [trafficSourceId], references: [id])
+  agency        Agency?       @relation(fields: [agencyId], references: [id])
+  campaigns     Campaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One account ID is unique per platform
+  @@unique([trafficSourceId, externalId])
+  @@index([agencyId])
+  @@map("ad_accounts")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 2 — CAMPAIGN STRUCTURE
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A campaign synced from a spend-side traffic source (e.g. Taboola).
+/// IMPORTANT: This model represents Taboola campaigns only.
+/// Keitaro "campaigns" are not stored here — they are referenced by externalId
+/// in CampaignMapping and ConversionStatsDaily only.
+model Campaign {
+  id              String         @id @default(cuid())
+  externalId      String         // platform campaign ID
+  trafficSourceId String
+  adAccountId     String
+  name            String
+  status          CampaignStatus @default(ACTIVE)
+  currency        String         @default("USD")
+  dailyBudget     Decimal?       @db.Decimal(12, 2)
+  cpcBid          Decimal?       @db.Decimal(10, 6) // cost-per-click bid target
+
+  trafficSource TrafficSource @relation(fields: [trafficSourceId], references: [id])
+  adAccount     AdAccount     @relation(fields: [adAccountId], references: [id])
+
+  items          CampaignItem[]
+  statsDaily     CampaignStatsDaily[]
+  publisherStats PublisherStatsDaily[]
+
+  // This campaign acting as the spend side of a P&L mapping
+  spendMappings CampaignMapping[] @relation("SpendCampaign")
+
+  lastSyncedAt DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([trafficSourceId, externalId])
+  @@index([adAccountId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+/// A creative / ad unit within a campaign (Taboola: "campaign items").
+/// Each item represents a specific title + image + URL combination.
+/// Not present in all traffic sources — guard with trafficSource check if needed.
+model CampaignItem {
+  id           String             @id @default(cuid())
+  externalId   String             // platform item ID
+  campaignId   String
+  title        String?
+  url          String?
+  thumbnailUrl String?
+  status       CampaignItemStatus @default(ACTIVE)
+
+  campaign   Campaign               @relation(fields: [campaignId], references: [id])
+  statsDaily CampaignItemStatsDaily[]
+
+  lastSyncedAt DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([campaignId, externalId])
+  @@index([campaignId])
+  @@map("campaign_items")
+}
+
+/// A publisher / site / placement where ads are served.
+/// Publishers are source-specific: a Taboola site and a hypothetical Facebook
+/// placement are separate Publisher records, even for the same domain.
+/// The `domain` field is a normalized root domain inferred from the publisher name
+/// for cross-source deduplication and display.
+model Publisher {
+  id              String        @id @default(cuid())
+  externalId      String        // platform publisher/site ID
+  trafficSourceId String
+  name            String        // as returned by the platform
+  domain          String?       // normalized root domain (e.g. "example.com")
+
+  trafficSource TrafficSource @relation(fields: [trafficSourceId], references: [id])
+
+  statsDaily    PublisherStatsDaily[]
+  listEntries   PublisherListEntry[]
+  qualityScores PublisherQualityScore[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([trafficSourceId, externalId])
+  @@index([trafficSourceId])
+  @@map("publishers")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 3 — MAPPING LAYER
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Links a spend-side campaign (Taboola, stored in `campaigns`) to a
+/// conversion-side campaign (Keitaro, referenced by external ID only).
+///
+/// This is the CORE cross-system join that makes P&L possible.
+/// Without a mapping, a campaign has spend data but no revenue.
+///
+/// Keitaro campaigns are intentionally NOT stored as Campaign records —
+/// they live in a different operational domain (tracking, not buying).
+/// The join is performed at query time:
+///   CampaignMapping.conversionExternalId = ConversionStatsDaily.externalCampaignId
+///   AND CampaignMapping.conversionSource = ConversionStatsDaily.source
+///
+/// MVP constraint: one Taboola campaign maps to at most one Keitaro campaign.
+model CampaignMapping {
+  id String @id @default(cuid())
+
+  // Spend side — references our internal Campaign record (Taboola)
+  spendCampaignId String
+
+  // Conversion side — external Keitaro campaign identifier
+  conversionExternalId String
+
+  // Which tracker this conversion data comes from ("keitaro")
+  // Stored as a slug string (not FK) because trackers may not have a TrafficSource record
+  conversionSource String
+
+  mappingType MappingType @default(MANUAL)
+  isActive    Boolean     @default(true)
+  notes       String?
+
+  spendCampaign Campaign   @relation("SpendCampaign", fields: [spendCampaignId], references: [id])
+  pnlDaily      PnlDaily[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One Taboola campaign can only map once per conversion-source campaign
+  @@unique([spendCampaignId, conversionExternalId, conversionSource])
+  // Index for reverse lookup: "which Taboola campaign maps to this Keitaro ID?"
+  @@index([conversionExternalId, conversionSource])
+  @@map("campaign_mappings")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 4 — SPEND STATS  (sourced from Taboola)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Daily aggregate spend/traffic stats per campaign.
+/// Upserted on every sync — one row per campaign per calendar day.
+/// Derived metrics (cpc, cpm, ctr) are stored to avoid recomputation at query time.
+model CampaignStatsDaily {
+  id         String   @id @default(cuid())
+  campaignId String
+  date       DateTime @db.Date
+
+  spend       Decimal @db.Decimal(12, 2)
+  clicks      Int     @default(0)
+  impressions Int     @default(0)
+
+  // Derived — stored for fast aggregations
+  cpc Decimal? @db.Decimal(10, 6) // spend / clicks
+  cpm Decimal? @db.Decimal(10, 6) // spend / impressions * 1000
+  ctr Decimal? @db.Decimal(10, 6) // clicks / impressions
+
+  currency String @default("USD")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+  @@index([date])
+  @@map("campaign_stats_daily")
+}
+
+/// Daily aggregate stats per campaign item (creative / ad unit).
+/// Allows creative-level performance analysis (which title/image converts best).
+model CampaignItemStatsDaily {
+  id             String   @id @default(cuid())
+  campaignItemId String
+  date           DateTime @db.Date
+
+  spend       Decimal @db.Decimal(12, 2)
+  clicks      Int     @default(0)
+  impressions Int     @default(0)
+
+  cpc Decimal? @db.Decimal(10, 6)
+  ctr Decimal? @db.Decimal(10, 6)
+
+  currency String @default("USD")
+
+  campaignItem CampaignItem @relation(fields: [campaignItemId], references: [id])
+
+  @@unique([campaignItemId, date])
+  @@index([date])
+  @@map("campaign_item_stats_daily")
+}
+
+/// Daily spend/click stats per publisher per campaign, broken down by GEO.
+/// This is the PRIMARY table for publisher quality analysis and
+/// blacklist/whitelist decision-making.
+///
+/// GEO breakdown: use ISO 3166-1 alpha-2 country code.
+/// Use "XX" as sentinel when GEO is not reported or unknown.
+///
+/// One row = one publisher × one campaign × one day × one country.
+model PublisherStatsDaily {
+  id          String   @id @default(cuid())
+  publisherId String
+  campaignId  String
+  date        DateTime @db.Date
+
+  // ISO 3166-1 alpha-2 country code. "XX" = unknown/not reported.
+  geo String @default("XX") @db.Char(2)
+
+  spend       Decimal @db.Decimal(12, 2)
+  clicks      Int     @default(0)
+  impressions Int     @default(0)
+
+  cpc Decimal? @db.Decimal(10, 6)
+  ctr Decimal? @db.Decimal(10, 6)
+
+  currency String @default("USD")
+
+  publisher Publisher @relation(fields: [publisherId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+
+  // Unique: one row per publisher × campaign × day × geo
+  @@unique([publisherId, campaignId, date, geo])
+  // For campaign-level view: "all publishers for campaign X on date Y"
+  @@index([campaignId, date])
+  // For date + geo-level cross-campaign analysis
+  @@index([date, geo])
+  // publisherId prefix from @@unique covers: publisher history queries
+  @@map("publisher_stats_daily")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 5 — CONVERSION STATS  (sourced from Keitaro)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Daily aggregate conversion and revenue stats from Keitaro.
+/// Stored INDEPENDENTLY from spend stats and joined at P&L time via CampaignMapping.
+///
+/// This table is source-agnostic by design: `source` = "keitaro" for now,
+/// but a future tracker can be added without schema changes.
+///
+/// The join for P&L reporting:
+///   ConversionStatsDaily.externalCampaignId = CampaignMapping.conversionExternalId
+///   AND ConversionStatsDaily.source          = CampaignMapping.conversionSource
+///   AND ConversionStatsDaily.date            = CampaignStatsDaily.date
+///
+/// GEO: same sentinel convention as PublisherStatsDaily ("XX" = unknown).
+model ConversionStatsDaily {
+  id                 String   @id @default(cuid())
+  source             String   // tracker slug: "keitaro"
+  externalCampaignId String   // Keitaro campaign ID
+  date               DateTime @db.Date
+
+  // ISO 3166-1 alpha-2. "XX" = unknown.
+  geo String @default("XX") @db.Char(2)
+
+  // Click-side (tracker counts — may differ from platform clicks)
+  clicks Int @default(0)
+
+  // Conversion counts by lead status
+  conversions         Int @default(0) // total received
+  approvedConversions Int @default(0)
+  pendingConversions  Int @default(0)
+  rejectedConversions Int @default(0)
+
+  // Revenue: gross = before rejections, net = after rejections
+  // Net revenue is the primary P&L input
+  grossRevenue Decimal @db.Decimal(12, 2)
+  netRevenue   Decimal @db.Decimal(12, 2)
+
+  currency String @default("USD")
+
+  // One row per tracker × external campaign × day × geo
+  @@unique([source, externalCampaignId, date, geo])
+  @@index([source, externalCampaignId])
+  @@index([date])
+  @@map("conversion_stats_daily")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 6 — PUBLISHER DECISION LAYER
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A named list of publishers used as a blacklist or whitelist.
+/// Lists are scoped to a traffic source.
+/// Optionally scoped to a specific ad account (null = applies to all accounts on that source).
+model PublisherList {
+  id              String            @id @default(cuid())
+  name            String
+  type            PublisherListType
+  trafficSourceId String
+
+  // If set, this list applies only to this account. If null, it is source-global.
+  adAccountId String?
+  description String?
+  isActive    Boolean @default(true)
+
+  trafficSource TrafficSource      @relation(fields: [trafficSourceId], references: [id])
+  entries       PublisherListEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trafficSourceId])
+  @@map("publisher_lists")
+}
+
+/// A single publisher entry within a list.
+/// Supports soft removal (status = REMOVED) to preserve audit history.
+/// When a publisher is re-added after removal, update status back to ACTIVE.
+model PublisherListEntry {
+  id          String          @id @default(cuid())
+  listId      String
+  publisherId String
+  status      ListEntryStatus @default(ACTIVE)
+
+  // Human-readable reason for this decision
+  reason    String?
+  removedAt DateTime?
+
+  list      PublisherList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  publisher Publisher     @relation(fields: [publisherId], references: [id])
+
+  addedAt DateTime @default(now())
+
+  // A publisher can only appear once per list (enforce at DB level)
+  @@unique([listId, publisherId])
+  // Reverse lookup: "which lists contain this publisher?"
+  @@index([publisherId])
+  @@map("publisher_list_entries")
+}
+
+/// Computed quality score for a publisher over a rolling time window.
+/// Populated by background aggregation jobs (Phase 2).
+/// Empty at launch — the schema is here to avoid a migration disruption later.
+///
+/// Scores aggregate PublisherStatsDaily + ConversionStatsDaily via CampaignMapping
+/// for the same publisher over `windowDays` days ending on `scoreDate`.
+model PublisherQualityScore {
+  id          String   @id @default(cuid())
+  publisherId String
+  scoreDate   DateTime @db.Date // rolling window end date
+
+  // How many days were included in the window
+  windowDays Int @default(14)
+
+  // Aggregated raw metrics over the window
+  totalSpend       Decimal @db.Decimal(12, 2)
+  totalClicks      Int
+  totalConversions Int
+  netRevenue       Decimal @db.Decimal(12, 2)
+
+  // Computed performance ratios
+  roi Decimal? @db.Decimal(10, 4) // (netRevenue - totalSpend) / totalSpend * 100
+  ctr Decimal? @db.Decimal(10, 6) // totalClicks / totalImpressions
+  cvr Decimal? @db.Decimal(10, 6) // totalConversions / totalClicks
+
+  // Classification label derived from roi/cvr thresholds (application-defined)
+  // e.g. "premium" | "average" | "poor" | "no_data"
+  qualityLabel String?
+
+  publisher Publisher @relation(fields: [publisherId], references: [id])
+
+  computedAt DateTime @default(now())
+
+  // One score per publisher × window size × date
+  @@unique([publisherId, scoreDate, windowDays])
+  @@index([scoreDate])
+  @@map("publisher_quality_scores")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 7 — EXPENSES & P&L
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Flexible expense categories for custom operational costs.
+/// System categories (isSystem = true) are seeded and cannot be deleted.
+/// Users may create additional categories at runtime.
+model ExpenseCategory {
+  id       String  @id @default(cuid())
+  slug     String  @unique // machine key: "tools", "staff", "traffic"
+  name     String          // display name
+  color    String?         // hex color for UI badges (e.g. "#3b82f6")
+  isSystem Boolean @default(false)
+
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("expense_categories")
+}
+
+/// A manually entered operational expense.
+/// These are global costs (not per-campaign) included in net P&L reporting.
+/// Examples: Keitaro license, freelancer payment, VPS hosting.
+model Expense {
+  id         String            @id @default(cuid())
+  name       String
+  amount     Decimal           @db.Decimal(12, 2)
+  currency   String            @default("USD")
+  categoryId String
+  date       DateTime          @db.Date
+  recurrence ExpenseRecurrence @default(ONE_TIME)
+  notes      String?
+
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([date])
+  @@map("expenses")
+}
+
+/// Materialized daily P&L snapshot, computed per campaign mapping.
+/// Refreshed by background aggregation jobs after each data sync.
+///
+/// Global P&L for a date = SUM over all PnlDaily rows for that date.
+/// Global net P&L = global grossProfit - SUM(Expense.amount) for that period.
+///
+/// Campaigns WITHOUT a CampaignMapping have no PnlDaily row —
+/// they appear in the spend-only report as unmatched campaigns.
+model PnlDaily {
+  id                String   @id @default(cuid())
+  date              DateTime @db.Date
+  campaignMappingId String
+
+  // Spend side — aggregated from CampaignStatsDaily
+  spend       Decimal @db.Decimal(12, 2)
+  clicks      Int     @default(0)
+  impressions Int     @default(0)
+
+  // Revenue side — aggregated from ConversionStatsDaily via CampaignMapping
+  grossRevenue Decimal @db.Decimal(12, 2)
+  netRevenue   Decimal @db.Decimal(12, 2)
+  conversions  Int     @default(0)
+
+  // P&L computed fields
+  // grossProfit = netRevenue - spend
+  grossProfit Decimal  @db.Decimal(12, 2)
+  // roi = grossProfit / spend * 100  (null when spend = 0)
+  roi         Decimal? @db.Decimal(10, 4)
+
+  campaignMapping CampaignMapping @relation(fields: [campaignMappingId], references: [id])
+
+  // Timestamp of last computation (used to detect stale rows)
+  computedAt DateTime @default(now())
+
+  @@unique([date, campaignMappingId])
+  // Reverse: all P&L history for one mapping
+  @@index([campaignMappingId])
+  @@map("pnl_daily")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8 — SYNC / IMPORT INFRASTRUCTURE
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Audit log of every sync operation against an external data source.
+/// One record per sync job execution — written at start, updated at finish.
 model SyncLog {
-  id         String    @id @default(cuid())
-  source     String    // "taboola" | "keitaro"
-  type       String    // "campaigns" | "publishers" | "stats" | "conversions"
-  status     String    // "success" | "error" | "partial"
+  id     String     @id @default(cuid())
+  source String     // traffic source slug: "taboola" | "keitaro"
+  // What was synced: "campaigns" | "items" | "publishers" | "stats" | "conversions"
+  entityType String
+  status     SyncStatus @default(PENDING)
+
   startedAt  DateTime
   finishedAt DateTime?
-  error      String?
-  meta       Json?
 
+  // Record-level counters for monitoring
+  recordsFetched  Int?
+  recordsInserted Int?
+  recordsUpdated  Int?
+  recordsSkipped  Int?
+  recordsFailed   Int?
+
+  errorMessage String?
+
+  // Arbitrary job context: date range, account ID, etc.
+  meta Json?
+
+  // FK to TrafficSource (optional — some syncs may be internal)
+  trafficSourceId String?
+  trafficSource   TrafficSource? @relation(fields: [trafficSourceId], references: [id])
+
+  rawBatches RawImportBatch[]
+
+  createdAt DateTime @default(now())
+
+  @@index([source, status])
+  @@index([startedAt])
   @@map("sync_logs")
+}
+
+/// Stores raw API response payloads for debugging and re-processing.
+///
+/// Justification: Taboola and Keitaro APIs are rate-limited. Storing raw
+/// responses allows us to re-process data after fixing a bug without hitting
+/// the API again. Critical during Phase 2 integration development.
+///
+/// Production note: implement a retention policy (prune records older than N days)
+/// to prevent unbounded storage growth. The `createdAt` index supports this.
+model RawImportBatch {
+  id         String    @id @default(cuid())
+  syncLogId  String
+  source     String    // "taboola" | "keitaro"
+  entityType String    // "campaigns" | "publishers" | "stats" | etc.
+  payload    Json      // raw API response — as received, unmodified
+  processedAt DateTime?
+
+  syncLog SyncLog @relation(fields: [syncLogId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([syncLogId])
+  // Supports querying by type and pruning by age
+  @@index([source, entityType, createdAt])
+  @@map("raw_import_batches")
 }

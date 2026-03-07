@@ -106,8 +106,21 @@
 - [ ] Push list to Taboola API
 - [ ] Change audit log
 
-### Expenses Page
-- [ ] Add/edit/delete expense entries
+### Expenses CRUD ✅
+- [x] Schema: added `vendor` field to Expense model
+- [x] Migration: `20260308000001_expense_vendor`
+- [x] Seed: 9 categories (Accounts, AI Services, Domains, Traffic, Tools, Staff, Infrastructure, Services, Other)
+- [x] Server actions: create, update, delete with Zod validation and field-level errors
+- [x] Expenses list page: table with Date, Category, Title, Vendor, Amount (USD), Recurrence, Notes, Actions
+- [x] Summary block: real DB-based totals — total count, total spent, breakdown by category with colour dots
+- [x] Category badge: colour-coded per category with dot indicator
+- [x] Create dialog: "Add Expense" button opens form with date (defaults to today), category select, title, amount, recurrence, vendor, notes
+- [x] Edit dialog: pre-filled form per row, saves changes, refreshes table
+- [x] Delete: two-step confirmation inline per row
+- [x] Amounts right-aligned, monospace, formatted as USD ($1,234.56)
+- [x] Long notes/titles truncated with title tooltip
+- [x] Empty values displayed as "—"
+- [x] Graceful error handling — page renders empty state if DB is unreachable
 - [ ] Category filter
 - [ ] Monthly total included in P&L
 

@@ -52,6 +52,24 @@ async function main() {
 
   const expenseCategories = [
     {
+      slug: "accounts",
+      name: "Accounts",
+      color: "#0ea5e9", // sky
+      isSystem: true,
+    },
+    {
+      slug: "ai-services",
+      name: "AI Services",
+      color: "#a855f7", // purple
+      isSystem: true,
+    },
+    {
+      slug: "domains",
+      name: "Domains",
+      color: "#f97316", // orange
+      isSystem: true,
+    },
+    {
       slug: "traffic",
       name: "Traffic & Media Spend",
       color: "#3b82f6", // blue

@@ -15,7 +15,7 @@
  *  5. On error:  display global error and per-field errors inline
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
@@ -28,6 +28,7 @@ import {
   EXPENSE_RECURRENCES,
   EXPENSE_RECURRENCE_LABELS,
 } from "@/features/expenses/schema";
+import { QuickCreateCategory } from "@/features/expense-categories/components/quick-create-category";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,8 @@ export function ExpenseForm({
   const [pending,     setPending]     = useState(false);
   const [error,       setError]       = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [catList,     setCatList]     = useState(categories);
+  const selectRef                     = useRef<HTMLSelectElement>(null);
 
   const isEdit = !!expense;
 
@@ -111,8 +114,26 @@ export function ExpenseForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="categoryId">Category *</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="categoryId">Category *</Label>
+            <QuickCreateCategory
+              onCreated={(newId) => {
+                // Add a temporary option — the full name will come after router.refresh()
+                // but we still auto-select the new ID right away
+                setCatList((prev) =>
+                  prev.some((c) => c.id === newId)
+                    ? prev
+                    : [...prev, { id: newId, name: "New category", slug: "", color: null }],
+                );
+                // Auto-select the newly created category
+                setTimeout(() => {
+                  if (selectRef.current) selectRef.current.value = newId;
+                }, 0);
+              }}
+            />
+          </div>
           <select
+            ref={selectRef}
             id="categoryId"
             name="categoryId"
             required
@@ -121,7 +142,7 @@ export function ExpenseForm({
             className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <option value="">Select category...</option>
-            {categories.map((c) => (
+            {catList.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>

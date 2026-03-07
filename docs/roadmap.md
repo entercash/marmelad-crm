@@ -121,6 +121,18 @@
 - [x] Long notes/titles truncated with title tooltip
 - [x] Empty values displayed as "—"
 - [x] Graceful error handling — page renders empty state if DB is unreachable
+
+### Expense Categories Management ✅
+- [x] Categories CRUD: create, edit, delete with Zod validation and case-insensitive duplicate check
+- [x] Categories page at `/expenses/categories` with table showing: Name (colour badge), Slug, Expense count, Type (System/Custom), Created, Actions
+- [x] Auto-generated slug from name (e.g. "AI Services" → "ai-services"), with uniqueness enforcement
+- [x] Delete safety: blocks deletion if expenses use this category, with count in error message
+- [x] System category protection: system categories cannot be deleted (lock icon + no trash button)
+- [x] Colour picker: 12 predefined colours with live preview badge
+- [x] Quick-create from expense form: "+ New category" button opens dialog inline, auto-selects new category in dropdown
+- [x] "Manage Categories" button on Expenses page header linking to `/expenses/categories`
+- [x] Back to Expenses link on Categories page
+- [x] Empty state with "Add First Category" CTA
 - [ ] Category filter
 - [ ] Monthly total included in P&L
 

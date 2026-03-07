@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { Receipt, Plus, Pencil, DollarSign, LayoutList } from "lucide-react";
+import Link from "next/link";
+import { Receipt, Plus, Pencil, DollarSign, LayoutList, Tags } from "lucide-react";
 
 import { PageHeader }          from "@/components/shared/page-header";
 import { EmptyState }          from "@/components/shared/empty-state";
@@ -56,15 +57,23 @@ export default async function ExpensesPage() {
         title="Expenses"
         description="Track operational costs — accounts, AI services, domains, tools, and more"
         action={
-          <ExpenseDialog
-            categories={categories}
-            trigger={
-              <Button size="sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add Expense
+          <div className="flex items-center gap-2">
+            <Link href="/expenses/categories">
+              <Button variant="outline" size="sm">
+                <Tags className="mr-1.5 h-4 w-4" />
+                Manage Categories
               </Button>
-            }
-          />
+            </Link>
+            <ExpenseDialog
+              categories={categories}
+              trigger={
+                <Button size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add Expense
+                </Button>
+              }
+            />
+          </div>
         }
       />
 

@@ -35,30 +35,35 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase().trim() },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email.toLowerCase().trim() },
+          });
 
-        if (!user) {
-          return null; // Generic — don't reveal "user not found"
+          if (!user) {
+            return null; // Generic — don't reveal "user not found"
+          }
+
+          const passwordValid = await compare(
+            credentials.password,
+            user.passwordHash,
+          );
+
+          if (!passwordValid) {
+            return null; // Generic — don't reveal "wrong password"
+          }
+
+          // Return the user object that NextAuth will encode into the JWT
+          return {
+            id:    user.id,
+            email: user.email,
+            name:  user.name,
+            role:  user.role,
+          };
+        } catch (err) {
+          console.error("[auth] authorize error:", err);
+          return null;
         }
-
-        const passwordValid = await compare(
-          credentials.password,
-          user.passwordHash,
-        );
-
-        if (!passwordValid) {
-          return null; // Generic — don't reveal "wrong password"
-        }
-
-        // Return the user object that NextAuth will encode into the JWT
-        return {
-          id:    user.id,
-          email: user.email,
-          name:  user.name,
-          role:  user.role,
-        };
       },
     }),
   ],

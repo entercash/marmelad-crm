@@ -120,32 +120,30 @@ async function main() {
   // ─────────────────────────────────────────────
   // ADMIN USER
   // ─────────────────────────────────────────────
-  // Creates the initial admin user from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
-  // Skipped if env vars are not set or if the user already exists.
-  // Safe to run multiple times — existing password is NOT overwritten.
+  // Ensures an admin user exists from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
+  // If the user doesn't exist → creates it.
+  // If the user already exists → updates the password hash.
+  // Safe to run multiple times.
 
   const adminEmail    = process.env.ADMIN_EMAIL?.trim();
   const adminPassword = process.env.ADMIN_PASSWORD?.trim();
 
   if (adminEmail && adminPassword) {
-    const existing = await prisma.user.findUnique({
-      where: { email: adminEmail.toLowerCase() },
+    const email        = adminEmail.toLowerCase();
+    const passwordHash = await hash(adminPassword, 12);
+
+    await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash, role: UserRole.ADMIN },
+      create: {
+        email,
+        passwordHash,
+        name: "Admin",
+        role: UserRole.ADMIN,
+      },
     });
 
-    if (existing) {
-      console.log(`  ✓ Admin user already exists: ${existing.email}`);
-    } else {
-      const passwordHash = await hash(adminPassword, 12);
-      const admin = await prisma.user.create({
-        data: {
-          email:        adminEmail.toLowerCase(),
-          passwordHash,
-          name:         "Admin",
-          role:         UserRole.ADMIN,
-        },
-      });
-      console.log(`  ✓ Admin user created: ${admin.email}`);
-    }
+    console.log(`  ✓ Admin user ensured: email: ${email} password: ${adminPassword}`);
   } else {
     console.log("  ⏭ Skipping admin user (ADMIN_EMAIL / ADMIN_PASSWORD not set)");
   }

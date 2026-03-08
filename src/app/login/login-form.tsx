@@ -33,9 +33,9 @@ export function LoginForm() {
         return;
       }
 
-      // Successful login — redirect to dashboard
-      router.push("/");
-      router.refresh();
+      // Successful login — hard redirect ensures the browser picks up the
+      // new session cookie before middleware evaluates the next request.
+      window.location.href = "/";
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);

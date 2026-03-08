@@ -78,6 +78,31 @@ enum ExpenseRecurrence {
   ANNUAL
 }
 
+/// User role for access control.
+enum UserRole {
+  ADMIN
+  USER
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 0 — USERS & AUTHENTICATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// CRM user with hashed password authentication.
+/// MVP: single admin user. Designed for future multi-user expansion.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         UserRole @default(USER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // DOMAIN 1 — TRAFFIC SOURCES & ACCOUNTS
 // ══════════════════════════════════════════════════════════════════════════════

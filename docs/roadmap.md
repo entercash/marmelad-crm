@@ -85,6 +85,13 @@
 - [ ] Campaign-level P&L view
 - [ ] Publisher-level P&L view
 
+### Dashboard — Core Business Metrics ✅
+- [x] Simplified to 4 key metrics: Spent, Received, ROI, Result
+- [x] Spent = ad spend (CampaignStatsDaily) + manual expenses (Expense)
+- [x] Received = net revenue (ConversionStatsDaily)
+- [x] ROI = ((Received − Spent) / Spent) × 100
+- [x] Result = Received − Spent (color-coded positive/negative)
+
 ### Dashboard Enhancements
 - [ ] Date range picker (filter stat cards by period)
 - [ ] Trend sparklines (spend vs. revenue over time)
@@ -141,9 +148,15 @@
 ## Phase 4 — Scaling & Multi-User
 > Goal: Support a team of up to 5, with roles and better tooling.
 
-### Authentication
-- [ ] NextAuth.js integration (email + password or SSO)
-- [ ] Role-based access: Admin, Analyst, Viewer
+### Authentication ✅
+- [x] NextAuth.js v4 with Credentials provider + JWT sessions
+- [x] User model in Prisma (email, passwordHash, role, name)
+- [x] Login page at `/login` with email + password form
+- [x] Middleware-based route protection — all `(dashboard)` routes require authentication
+- [x] Logout button in sidebar (shows current user email)
+- [x] Admin user bootstrap via seed script (`ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars)
+- [x] Passwords hashed with bcryptjs (12 rounds)
+- [ ] Role-based access: Admin, Analyst, Viewer (User model has `role` field, enforcement TBD)
 
 ### Additional Traffic Sources
 - [ ] Facebook Ads connector

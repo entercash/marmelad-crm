@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   Megaphone,
@@ -12,6 +13,7 @@ import {
   FileCheck2,
   Settings,
   Activity,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +81,7 @@ function NavLink({
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   function isItemActive(href: string): boolean {
     if (href === "/") return pathname === "/";
@@ -128,6 +131,24 @@ export function Sidebar() {
             </li>
           ))}
         </ul>
+
+        {/* User + Logout */}
+        {session?.user && (
+          <div className="mt-3 border-t border-slate-800 pt-3">
+            <div className="flex items-center justify-between px-3">
+              <span className="truncate text-xs text-slate-400">
+                {session.user.email}
+              </span>
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                title="Sign out"
+                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Version badge */}
         <p className="mt-3 px-3 text-[10px] text-slate-600">v0.1.0 · MVP</p>

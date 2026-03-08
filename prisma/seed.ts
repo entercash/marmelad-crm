@@ -7,7 +7,8 @@
  * Run with: npm run db:seed
  */
 
-import { PrismaClient, TrafficSourceType } from "@prisma/client";
+import { PrismaClient, TrafficSourceType, UserRole } from "@prisma/client";
+import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -114,6 +115,39 @@ async function main() {
       create: cat,
     });
     console.log(`  ✓ Expense category: ${created.name} [${created.slug}]`);
+  }
+
+  // ─────────────────────────────────────────────
+  // ADMIN USER
+  // ─────────────────────────────────────────────
+  // Creates the initial admin user from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
+  // Skipped if env vars are not set or if the user already exists.
+  // Safe to run multiple times — existing password is NOT overwritten.
+
+  const adminEmail    = process.env.ADMIN_EMAIL?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+
+  if (adminEmail && adminPassword) {
+    const existing = await prisma.user.findUnique({
+      where: { email: adminEmail.toLowerCase() },
+    });
+
+    if (existing) {
+      console.log(`  ✓ Admin user already exists: ${existing.email}`);
+    } else {
+      const passwordHash = await hash(adminPassword, 12);
+      const admin = await prisma.user.create({
+        data: {
+          email:        adminEmail.toLowerCase(),
+          passwordHash,
+          name:         "Admin",
+          role:         UserRole.ADMIN,
+        },
+      });
+      console.log(`  ✓ Admin user created: ${admin.email}`);
+    }
+  } else {
+    console.log("  ⏭ Skipping admin user (ADMIN_EMAIL / ADMIN_PASSWORD not set)");
   }
 
   console.log("\n✅ Seed complete.");

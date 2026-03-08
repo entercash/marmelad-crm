@@ -1,9 +1,13 @@
 /**
  * Dashboard data-access layer.
  *
- * All queries run in parallel via Promise.all so total latency is bounded
- * by the slowest individual query, not by the sum.
+ * Aggregates the 4 core business metrics:
+ *   1. Spent     — ad spend (CampaignStatsDaily) + manual expenses (Expense)
+ *   2. Received  — net revenue from conversions (ConversionStatsDaily)
+ *   3. ROI       — ((Received − Spent) / Spent) × 100
+ *   4. Result    — Received − Spent
  *
+ * All queries run in parallel via Promise.all.
  * Called only from the Dashboard Server Component — never imported by client code.
  */
 
@@ -11,100 +15,44 @@ import { prisma } from "@/lib/prisma";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export type LastSync = {
-  source:     string;
-  entityType: string;
-  status:     string;
-  startedAt:  Date;
-} | null;
-
 export type DashboardSummary = {
-  campaigns: {
-    total:  number;
-    active: number;
-    paused: number;
-  };
-  publishers:        number;
-  adAccounts:        number;
-  agencies:          number;
-  trafficSources:    number;
-  whitePages:        number;
-  expenses: {
-    count:       number;
-    totalAmount: number;
-  };
-  expenseCategories: number;
-  syncLogs: {
-    last24hCount: number;
-    latest:       LastSync;
-  };
+  /** Total ad spend (platforms) + manual expenses */
+  spent:    number;
+  /** Total net revenue from conversions */
+  received: number;
+  /** ((received − spent) / spent) × 100; null when spent = 0 */
+  roi:      number | null;
+  /** received − spent (can be negative) */
+  result:   number;
 };
 
 // ─── Query ─────────────────────────────────────────────────────────────────────
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [adSpendAgg, expenseAgg, revenueAgg] = await Promise.all([
+    // Sum of all campaign ad spend (Taboola etc.)
+    prisma.campaignStatsDaily.aggregate({
+      _sum: { spend: true },
+    }),
 
-  const [
-    campaignTotal,
-    campaignActive,
-    campaignPaused,
-    publisherCount,
-    adAccountCount,
-    agencyCount,
-    trafficSourceCount,
-    whitePageCount,
-    expenseAgg,
-    expenseCategoryCount,
-    syncLast24h,
-    latestSync,
-  ] = await Promise.all([
-    prisma.campaign.count(),
-    prisma.campaign.count({ where: { status: "ACTIVE" } }),
-    prisma.campaign.count({ where: { status: "PAUSED" } }),
-    prisma.publisher.count(),
-    prisma.adAccount.count(),
-    prisma.agency.count(),
-    prisma.trafficSource.count(),
-    prisma.whitePage.count(),
+    // Sum of all manual expenses
     prisma.expense.aggregate({
-      _count: { id: true },
-      _sum:   { amount: true },
+      _sum: { amount: true },
     }),
-    prisma.expenseCategory.count(),
-    prisma.syncLog.count({
-      where: { startedAt: { gte: since24h } },
-    }),
-    prisma.syncLog.findFirst({
-      orderBy: { startedAt: "desc" },
-      select: {
-        source:     true,
-        entityType: true,
-        status:     true,
-        startedAt:  true,
-      },
+
+    // Sum of all net revenue from conversion stats
+    prisma.conversionStatsDaily.aggregate({
+      _sum: { netRevenue: true },
     }),
   ]);
 
-  return {
-    campaigns: {
-      total:  campaignTotal,
-      active: campaignActive,
-      paused: campaignPaused,
-    },
-    publishers:        publisherCount,
-    adAccounts:        adAccountCount,
-    agencies:          agencyCount,
-    trafficSources:    trafficSourceCount,
-    whitePages:        whitePageCount,
-    expenses: {
-      count:       expenseAgg._count.id,
-      totalAmount: Number(expenseAgg._sum.amount ?? 0),
-    },
-    expenseCategories: expenseCategoryCount,
-    syncLogs: {
-      last24hCount: syncLast24h,
-      latest:       latestSync,
-    },
-  };
+  const adSpend  = Number(adSpendAgg._sum.spend      ?? 0);
+  const expenses = Number(expenseAgg._sum.amount      ?? 0);
+  const received = Number(revenueAgg._sum.netRevenue  ?? 0);
+
+  const spent  = adSpend + expenses;
+  const result = received - spent;
+  const roi    = spent > 0 ? ((received - spent) / spent) * 100 : null;
+
+  return { spent, received, roi, result };
 }

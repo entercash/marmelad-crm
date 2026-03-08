@@ -156,7 +156,17 @@
 - [x] Logout button in sidebar (shows current user email)
 - [x] Admin user bootstrap via seed script (`ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars)
 - [x] Passwords hashed with bcryptjs (12 rounds)
-- [ ] Role-based access: Admin, Analyst, Viewer (User model has `role` field, enforcement TBD)
+
+### Role-Based User Management ✅
+- [x] Three roles: ADMIN (full access), BUYER (operational pages), ANALYST (read-only)
+- [x] Migration: renamed USER → BUYER, added ANALYST to UserRole enum
+- [x] Users management page at `/users` (ADMIN only)
+- [x] CRUD: create, edit (email/name/role/password), delete users
+- [x] Password change via edit dialog (leave blank to keep current, hashed with bcryptjs)
+- [x] Safety: cannot delete yourself, cannot demote yourself from ADMIN
+- [x] Write guards on all server actions (expenses, agencies, white pages, expense categories)
+- [x] Role-aware sidebar: "Users" link visible only to ADMIN
+- [x] `src/lib/auth-guard.ts` — reusable `guardWrite()`, `guardAdmin()`, `requireAuth()`, `requireAdmin()`
 
 ### Additional Traffic Sources
 - [ ] Facebook Ads connector

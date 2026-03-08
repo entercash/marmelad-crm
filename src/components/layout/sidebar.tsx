@@ -14,6 +14,7 @@ import {
   Settings,
   Activity,
   LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ type NavItem = {
   label: string;
   href: string;
   icon: React.ElementType;
+  /** If set, only users with this role see the link. */
+  requiredRole?: string;
 };
 
 type NavGroup = {
@@ -48,6 +51,12 @@ const navigation: NavGroup[] = [
       { label: "Agencies",    href: "/agencies",    icon: Building2 },
       { label: "White Pages", href: "/white-pages", icon: FileCheck2 },
       { label: "Ad Accounts", href: "/ad-accounts", icon: CreditCard },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { label: "Users", href: "/users", icon: Users, requiredRole: "ADMIN" },
     ],
   },
 ];
@@ -82,10 +91,18 @@ function NavLink({
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const userRole = session?.user?.role;
 
   function isItemActive(href: string): boolean {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
+  }
+
+  /** Filter nav items by requiredRole. */
+  function filterItems(items: NavItem[]): NavItem[] {
+    return items.filter(
+      (item) => !item.requiredRole || item.requiredRole === userRole,
+    );
   }
 
   return (
@@ -103,22 +120,26 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         <div className="space-y-4">
-          {navigation.map((group, i) => (
-            <div key={i}>
-              {group.label && (
-                <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  {group.label}
-                </p>
-              )}
-              <ul className="space-y-0.5">
-                {group.items.map((item) => (
-                  <li key={item.href}>
-                    <NavLink item={item} isActive={isItemActive(item.href)} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {navigation.map((group, i) => {
+            const visibleItems = filterItems(group.items);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={i}>
+                {group.label && (
+                  <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {group.label}
+                  </p>
+                )}
+                <ul className="space-y-0.5">
+                  {visibleItems.map((item) => (
+                    <li key={item.href}>
+                      <NavLink item={item} isActive={isItemActive(item.href)} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       </nav>
 

@@ -13,7 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { Prisma }         from "@prisma/client";
 
-import { prisma }       from "@/lib/prisma";
+import { prisma }      from "@/lib/prisma";
+import { guardWrite }  from "@/lib/auth-guard";
 import { agencySchema } from "./schema";
 
 // ─── Shared result type ────────────────────────────────────────────────────────
@@ -44,6 +45,9 @@ function parseForm(formData: FormData) {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 export async function createAgency(formData: FormData): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -68,6 +72,9 @@ export async function updateAgency(
   id: string,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -95,6 +102,9 @@ export async function updateAgency(
 }
 
 export async function deleteAgency(id: string): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   try {
     // Guard: prevent deletion if ad accounts are still linked
     const adAccountCount = await prisma.adAccount.count({

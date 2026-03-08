@@ -13,7 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { Prisma }         from "@prisma/client";
 
-import { prisma }        from "@/lib/prisma";
+import { prisma }      from "@/lib/prisma";
+import { guardWrite }  from "@/lib/auth-guard";
 import { expenseSchema } from "./schema";
 
 // ─── Shared result type ────────────────────────────────────────────────────────
@@ -52,6 +53,9 @@ function toExpenseDate(dateStr: string): Date {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 export async function createExpense(formData: FormData): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -84,6 +88,9 @@ export async function updateExpense(
   id: string,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -120,6 +127,9 @@ export async function updateExpense(
 }
 
 export async function deleteExpense(id: string): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   try {
     await prisma.expense.delete({ where: { id } });
     revalidatePath("/expenses");

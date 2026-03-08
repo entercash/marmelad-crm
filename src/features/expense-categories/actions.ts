@@ -17,6 +17,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma }         from "@prisma/client";
 
 import { prisma }                from "@/lib/prisma";
+import { guardWrite }            from "@/lib/auth-guard";
 import { expenseCategorySchema } from "./schema";
 
 // ─── Shared result type ────────────────────────────────────────────────────────
@@ -83,6 +84,9 @@ function revalidate() {
 export async function createExpenseCategory(
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -136,6 +140,9 @@ export async function updateExpenseCategory(
   id: string,
   formData: FormData,
 ): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   const parsed = parseForm(formData);
 
   if (!parsed.success) {
@@ -196,6 +203,9 @@ export async function updateExpenseCategory(
 }
 
 export async function deleteExpenseCategory(id: string): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
   // Check if the category is used by any expenses
   const count = await prisma.expense.count({ where: { categoryId: id } });
   if (count > 0) {

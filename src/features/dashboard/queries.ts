@@ -26,7 +26,13 @@ export type DashboardSummary = {
   };
   publishers:        number;
   adAccounts:        number;
-  expenses:          number;
+  agencies:          number;
+  trafficSources:    number;
+  whitePages:        number;
+  expenses: {
+    count:       number;
+    totalAmount: number;
+  };
   expenseCategories: number;
   syncLogs: {
     last24hCount: number;
@@ -45,7 +51,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     campaignPaused,
     publisherCount,
     adAccountCount,
-    expenseCount,
+    agencyCount,
+    trafficSourceCount,
+    whitePageCount,
+    expenseAgg,
     expenseCategoryCount,
     syncLast24h,
     latestSync,
@@ -55,7 +64,13 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     prisma.campaign.count({ where: { status: "PAUSED" } }),
     prisma.publisher.count(),
     prisma.adAccount.count(),
-    prisma.expense.count(),
+    prisma.agency.count(),
+    prisma.trafficSource.count(),
+    prisma.whitePage.count(),
+    prisma.expense.aggregate({
+      _count: { id: true },
+      _sum:   { amount: true },
+    }),
     prisma.expenseCategory.count(),
     prisma.syncLog.count({
       where: { startedAt: { gte: since24h } },
@@ -79,7 +94,13 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     },
     publishers:        publisherCount,
     adAccounts:        adAccountCount,
-    expenses:          expenseCount,
+    agencies:          agencyCount,
+    trafficSources:    trafficSourceCount,
+    whitePages:        whitePageCount,
+    expenses: {
+      count:       expenseAgg._count.id,
+      totalAmount: Number(expenseAgg._sum.amount ?? 0),
+    },
     expenseCategories: expenseCategoryCount,
     syncLogs: {
       last24hCount: syncLast24h,

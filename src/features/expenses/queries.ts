@@ -4,7 +4,7 @@
  * ExpenseRow — full row shape with Date fields; safe for server components.
  *
  * ExpenseEditData — subset safe for client component props:
- *   `date` converted to "YYYY-MM-DD" string, `amount` to string, so they
+ *   `spendDate` converted to "YYYY-MM-DD" string, `amount` to string, so they
  *   cross the server -> client boundary without serialisation errors.
  *
  * CategoryOption — minimal shape for the category <select> dropdown.
@@ -18,13 +18,17 @@ import { prisma } from "@/lib/prisma";
 
 export type ExpenseRow = {
   id:         string;
-  date:       Date;
+  spendDate:  Date;
   name:       string;
   amount:     number; // Prisma Decimal -> number via .toNumber()
   currency:   string;
   recurrence: string;
   vendor:     string | null;
+  source:     string | null;
+  campaign:   string | null;
   notes:      string | null;
+  comment:    string | null;
+  createdAt:  Date;
   category: {
     id:    string;
     name:  string;
@@ -37,13 +41,16 @@ export type ExpenseRow = {
  */
 export type ExpenseEditData = {
   id:         string;
-  date:       string; // "YYYY-MM-DD"
+  spendDate:  string; // "YYYY-MM-DD"
   name:       string;
   amount:     string; // stringified for the input
   currency:   string;
   recurrence: string;
   vendor:     string | null;
+  source:     string | null;
+  campaign:   string | null;
   notes:      string | null;
+  comment:    string | null;
   categoryId: string;
 };
 
@@ -70,21 +77,25 @@ export type ExpenseSummary = {
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 /**
- * Returns all expenses ordered by date descending, with category included.
+ * Returns all expenses ordered by spendDate descending, with category included.
  * Converts Prisma Decimal to JS number for easy rendering.
  */
 export async function getExpenses(): Promise<ExpenseRow[]> {
   const rows = await prisma.expense.findMany({
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ spendDate: "desc" }, { createdAt: "desc" }],
     select: {
       id:         true,
-      date:       true,
+      spendDate:  true,
       name:       true,
       amount:     true,
       currency:   true,
       recurrence: true,
       vendor:     true,
+      source:     true,
+      campaign:   true,
       notes:      true,
+      comment:    true,
+      createdAt:  true,
       category: {
         select: {
           id:    true,

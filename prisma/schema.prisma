@@ -581,18 +581,22 @@ model Expense {
   amount     Decimal           @db.Decimal(12, 2)
   currency   String            @default("USD")
   categoryId String
-  date       DateTime          @db.Date
+  spendDate  DateTime          @db.Date              // actual date money was spent (analytics key)
   recurrence ExpenseRecurrence @default(ONE_TIME)
-  vendor     String?                                // e.g. "Hetzner", "OpenAI", "Namecheap"
+  vendor     String?                                  // e.g. "Hetzner", "OpenAI", "Namecheap"
+  source     String?                                  // e.g. "Taboola", "Facebook"
+  campaign   String?                                  // associated campaign name / ID
   notes      String?
+  comment    String?                                  // free-form comment
+  createdBy  String?                                  // user who created the record
 
   category ExpenseCategory @relation(fields: [categoryId], references: [id])
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now())                  // system timestamp — audit only
   updatedAt DateTime @updatedAt
 
   @@index([categoryId])
-  @@index([date])
+  @@index([spendDate])
   @@map("expenses")
 }
 

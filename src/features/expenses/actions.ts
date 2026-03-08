@@ -46,7 +46,7 @@ function parseForm(formData: FormData) {
  * Converts the validated "YYYY-MM-DD" string to a UTC midnight Date
  * so Prisma stores the correct date regardless of the server's local timezone.
  */
-function toExpenseDate(dateStr: string): Date {
+function toSpendDate(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00.000Z`);
 }
 
@@ -66,14 +66,14 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
     };
   }
 
-  const { date, amount, ...rest } = parsed.data;
+  const { spendDate, amount, ...rest } = parsed.data;
 
   try {
     await prisma.expense.create({
       data: {
         ...rest,
-        date:   toExpenseDate(date),
-        amount: new Prisma.Decimal(amount),
+        spendDate: toSpendDate(spendDate),
+        amount:    new Prisma.Decimal(amount),
       },
     });
     revalidatePath("/expenses");
@@ -101,15 +101,15 @@ export async function updateExpense(
     };
   }
 
-  const { date, amount, ...rest } = parsed.data;
+  const { spendDate, amount, ...rest } = parsed.data;
 
   try {
     await prisma.expense.update({
       where: { id },
       data: {
         ...rest,
-        date:   toExpenseDate(date),
-        amount: new Prisma.Decimal(amount),
+        spendDate: toSpendDate(spendDate),
+        amount:    new Prisma.Decimal(amount),
       },
     });
     revalidatePath("/expenses");

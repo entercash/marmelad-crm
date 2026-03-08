@@ -96,20 +96,20 @@ export function ExpenseForm({
         </div>
       )}
 
-      {/* ── Row 1: Date + Category ───────────────────────────────────────── */}
+      {/* ── Row 1: Spend Date + Category ──────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="date">Date *</Label>
+          <Label htmlFor="spendDate">Spend Date *</Label>
           <Input
-            id="date"
-            name="date"
+            id="spendDate"
+            name="spendDate"
             type="date"
             required
-            defaultValue={expense?.date ?? today}
-            aria-invalid={!!err("date")}
+            defaultValue={expense?.spendDate ?? today}
+            aria-invalid={!!err("spendDate")}
           />
-          {err("date") && (
-            <p className="text-xs text-red-600">{err("date")}</p>
+          {err("spendDate") && (
+            <p className="text-xs text-red-600">{err("spendDate")}</p>
           )}
         </div>
 
@@ -212,9 +212,44 @@ export function ExpenseForm({
         </div>
       </div>
 
-      {/* ── Row 4: Vendor (half width) ───────────────────────────────────── */}
+      {/* ── Row 4: Source + Campaign ─────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="source">Source</Label>
+          <Input
+            id="source"
+            name="source"
+            type="text"
+            placeholder="e.g. Taboola, Facebook"
+            maxLength={300}
+            defaultValue={expense?.source ?? ""}
+            aria-invalid={!!err("source")}
+          />
+          {err("source") && (
+            <p className="text-xs text-red-600">{err("source")}</p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="campaign">Campaign</Label>
+          <Input
+            id="campaign"
+            name="campaign"
+            type="text"
+            placeholder="e.g. US_iOS_Brand"
+            maxLength={300}
+            defaultValue={expense?.campaign ?? ""}
+            aria-invalid={!!err("campaign")}
+          />
+          {err("campaign") && (
+            <p className="text-xs text-red-600">{err("campaign")}</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 5: Vendor ─────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="vendor">Vendor / Source</Label>
+        <Label htmlFor="vendor">Vendor</Label>
         <Input
           id="vendor"
           name="vendor"
@@ -229,7 +264,24 @@ export function ExpenseForm({
         )}
       </div>
 
-      {/* ── Row 5: Notes (full width textarea) ───────────────────────────── */}
+      {/* ── Row 6: Comment ────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="comment">Comment</Label>
+        <Textarea
+          id="comment"
+          name="comment"
+          placeholder="Free-form comment..."
+          rows={2}
+          maxLength={5000}
+          defaultValue={expense?.comment ?? ""}
+          aria-invalid={!!err("comment")}
+        />
+        {err("comment") && (
+          <p className="text-xs text-red-600">{err("comment")}</p>
+        )}
+      </div>
+
+      {/* ── Row 7: Notes (full width textarea) ───────────────────────────── */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="notes">Notes</Label>
         <Textarea

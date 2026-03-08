@@ -17,7 +17,7 @@ import {
   type ExpenseSummary,
 } from "@/features/expenses/queries";
 import { EXPENSE_RECURRENCE_LABELS, type ExpenseRecurrenceValue } from "@/features/expenses/schema";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 export const metadata = { title: "Expenses" };
 
@@ -163,13 +163,16 @@ export default async function ExpensesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                  <th className="px-4 py-3 font-medium text-slate-500">Date</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Spend Date</th>
                   <th className="px-4 py-3 font-medium text-slate-500">Category</th>
                   <th className="px-4 py-3 font-medium text-slate-500">Title / Description</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Vendor</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-500">Amount</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Source</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Campaign</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Vendor</th>
                   <th className="px-4 py-3 font-medium text-slate-500">Recurrence</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Notes</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Comment</th>
+                  <th className="px-4 py-3 font-medium text-slate-500">Created At</th>
                   <th className="px-4 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -181,13 +184,16 @@ export default async function ExpensesPage() {
                   // Build the serialisable edit-data object (no Date / Decimal objects).
                   const editData = {
                     id:         exp.id,
-                    date:       exp.date.toISOString().slice(0, 10),
+                    spendDate:  exp.spendDate.toISOString().slice(0, 10),
                     name:       exp.name,
                     amount:     String(exp.amount),
                     currency:   exp.currency,
                     recurrence: exp.recurrence,
                     vendor:     exp.vendor,
+                    source:     exp.source,
+                    campaign:   exp.campaign,
                     notes:      exp.notes,
+                    comment:    exp.comment,
                     categoryId: exp.category.id,
                   };
 
@@ -196,9 +202,9 @@ export default async function ExpensesPage() {
                       key={exp.id}
                       className="transition-colors hover:bg-slate-50/60"
                     >
-                      {/* Date */}
+                      {/* Spend Date */}
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                        {formatDate(exp.date)}
+                        {formatDate(exp.spendDate)}
                       </td>
 
                       {/* Category badge */}
@@ -230,6 +236,33 @@ export default async function ExpensesPage() {
                         </span>
                       </td>
 
+                      {/* Amount — right-aligned, monospace */}
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-medium text-slate-900">
+                        {formatUsd(exp.amount)}
+                      </td>
+
+                      {/* Source */}
+                      <td className="px-4 py-3">
+                        {exp.source ? (
+                          <span className="block max-w-[140px] truncate text-slate-600" title={exp.source}>
+                            {exp.source}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">&mdash;</span>
+                        )}
+                      </td>
+
+                      {/* Campaign */}
+                      <td className="px-4 py-3">
+                        {exp.campaign ? (
+                          <span className="block max-w-[140px] truncate text-slate-600" title={exp.campaign}>
+                            {exp.campaign}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">&mdash;</span>
+                        )}
+                      </td>
+
                       {/* Vendor */}
                       <td className="px-4 py-3">
                         {exp.vendor ? (
@@ -244,28 +277,28 @@ export default async function ExpensesPage() {
                         )}
                       </td>
 
-                      {/* Amount — right-aligned, monospace */}
-                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-medium text-slate-900">
-                        {formatUsd(exp.amount)}
-                      </td>
-
                       {/* Recurrence */}
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                         {EXPENSE_RECURRENCE_LABELS[exp.recurrence as ExpenseRecurrenceValue] ?? exp.recurrence}
                       </td>
 
-                      {/* Notes — truncated */}
+                      {/* Comment — truncated */}
                       <td className="px-4 py-3">
-                        {exp.notes ? (
+                        {exp.comment ? (
                           <span
                             className="block max-w-[160px] truncate text-xs text-slate-500"
-                            title={exp.notes}
+                            title={exp.comment}
                           >
-                            {exp.notes}
+                            {exp.comment}
                           </span>
                         ) : (
                           <span className="text-slate-300">&mdash;</span>
                         )}
+                      </td>
+
+                      {/* Created At — audit timestamp */}
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">
+                        {formatDateTime(exp.createdAt)}
                       </td>
 
                       {/* Actions */}

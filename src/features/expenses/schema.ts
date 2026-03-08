@@ -46,9 +46,9 @@ function optionalText(maxLen: number, label: string) {
 
 export const expenseSchema = z.object({
   // Required fields
-  date: z
+  spendDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date is required"),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Spend date is required"),
 
   categoryId: z
     .string()
@@ -77,8 +77,11 @@ export const expenseSchema = z.object({
   }),
 
   // Optional fields — empty string -> null
-  vendor: optionalText(300, "Vendor"),
-  notes:  optionalText(5_000, "Notes"),
+  vendor:   optionalText(300, "Vendor"),
+  source:   optionalText(300, "Source"),
+  campaign: optionalText(300, "Campaign"),
+  notes:    optionalText(5_000, "Notes"),
+  comment:  optionalText(5_000, "Comment"),
 });
 
 export type ExpenseFormValues = z.infer<typeof expenseSchema>;

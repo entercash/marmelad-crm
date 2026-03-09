@@ -1,8 +1,11 @@
--- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'USER');
+-- CreateEnum (idempotent)
+DO $$ BEGIN
+  CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'USER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateTable
-CREATE TABLE "users" (
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "users" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
@@ -14,5 +17,5 @@ CREATE TABLE "users" (
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+-- CreateIndex (idempotent)
+CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email");

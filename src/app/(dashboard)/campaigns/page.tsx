@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Megaphone } from "lucide-react";
 
 import { PageHeader }              from "@/components/shared/page-header";
@@ -7,6 +9,8 @@ import { CampaignFilters }         from "./campaign-filters";
 import {
   getCampaigns,
   getCampaignFilterOptions,
+  type CampaignRow,
+  type TrafficSourceOption,
 } from "@/features/campaigns/queries";
 import {
   campaignStatusLabel,
@@ -28,14 +32,21 @@ export default async function CampaignsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [campaigns, filterOptions] = await Promise.all([
-    getCampaigns({
-      search:          searchParams.search,
-      status:          searchParams.status,
-      trafficSourceId: searchParams.source,
-    }),
-    getCampaignFilterOptions(),
-  ]);
+  let campaigns: CampaignRow[] = [];
+  let filterOptions: { trafficSources: TrafficSourceOption[] } = { trafficSources: [] };
+
+  try {
+    [campaigns, filterOptions] = await Promise.all([
+      getCampaigns({
+        search:          searchParams.search,
+        status:          searchParams.status,
+        trafficSourceId: searchParams.source,
+      }),
+      getCampaignFilterOptions(),
+    ]);
+  } catch (err) {
+    console.error("[CampaignsPage] Failed to fetch data:", err);
+  }
 
   const hasActiveFilter = !!(
     searchParams.search ||

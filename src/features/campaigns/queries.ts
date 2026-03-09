@@ -47,42 +47,47 @@ const VALID_STATUSES = new Set(["ACTIVE", "PAUSED", "STOPPED", "ARCHIVED"]);
 export async function getCampaigns(
   filters: CampaignFilters = {},
 ): Promise<CampaignRow[]> {
-  const where: Prisma.CampaignWhereInput = {};
+  try {
+    const where: Prisma.CampaignWhereInput = {};
 
-  if (filters.status && VALID_STATUSES.has(filters.status)) {
-    where.status = filters.status as never;
+    if (filters.status && VALID_STATUSES.has(filters.status)) {
+      where.status = filters.status as never;
+    }
+
+    if (filters.trafficSourceId) {
+      where.trafficSourceId = filters.trafficSourceId;
+    }
+
+    if (filters.search?.trim()) {
+      where.name = { contains: filters.search.trim(), mode: "insensitive" };
+    }
+
+    const rows = await prisma.campaign.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+      select: {
+        id:           true,
+        name:         true,
+        status:       true,
+        currency:     true,
+        dailyBudget:  true,
+        lastSyncedAt: true,
+        updatedAt:    true,
+        trafficSource: { select: { name: true, slug: true } },
+        adAccount:     { select: { name: true } },
+      },
+    });
+
+    // Prisma returns Decimal for dailyBudget; convert to primitive number for the UI.
+    return rows.map((r) => ({
+      ...r,
+      dailyBudget: r.dailyBudget !== null ? Number(r.dailyBudget) : null,
+    }));
+  } catch (err) {
+    console.error("[getCampaigns] Database query failed:", err);
+    return [];
   }
-
-  if (filters.trafficSourceId) {
-    where.trafficSourceId = filters.trafficSourceId;
-  }
-
-  if (filters.search?.trim()) {
-    where.name = { contains: filters.search.trim(), mode: "insensitive" };
-  }
-
-  const rows = await prisma.campaign.findMany({
-    where,
-    orderBy: { updatedAt: "desc" },
-    take: 200,
-    select: {
-      id:           true,
-      name:         true,
-      status:       true,
-      currency:     true,
-      dailyBudget:  true,
-      lastSyncedAt: true,
-      updatedAt:    true,
-      trafficSource: { select: { name: true, slug: true } },
-      adAccount:     { select: { name: true } },
-    },
-  });
-
-  // Prisma returns Decimal for dailyBudget; convert to primitive number for the UI.
-  return rows.map((r) => ({
-    ...r,
-    dailyBudget: r.dailyBudget !== null ? Number(r.dailyBudget) : null,
-  }));
 }
 
 /**
@@ -92,14 +97,19 @@ export async function getCampaigns(
 export async function getCampaignFilterOptions(): Promise<{
   trafficSources: TrafficSourceOption[];
 }> {
-  // Fetch all active traffic sources that have at least one campaign.
-  const sources = await prisma.trafficSource.findMany({
-    where: {
-      campaigns: { some: {} },
-    },
-    select: { id: true, name: true, slug: true },
-    orderBy: { name: "asc" },
-  });
+  try {
+    // Fetch all active traffic sources that have at least one campaign.
+    const sources = await prisma.trafficSource.findMany({
+      where: {
+        campaigns: { some: {} },
+      },
+      select: { id: true, name: true, slug: true },
+      orderBy: { name: "asc" },
+    });
 
-  return { trafficSources: sources };
+    return { trafficSources: sources };
+  } catch (err) {
+    console.error("[getCampaignFilterOptions] Database query failed:", err);
+    return { trafficSources: [] };
+  }
 }

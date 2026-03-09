@@ -39,8 +39,8 @@ interface AccountFormProps {
 // ─── Shared select class ──────────────────────────────────────────────────────
 
 const selectClass =
-  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm " +
-  "transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 " +
+  "h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 py-1 text-sm text-white shadow-sm " +
+  "transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:ring-offset-0 " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {/* Global error banner */}
       {error && Object.keys(fieldErrors).length === 0 && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
           {error}
         </div>
       )}
@@ -251,7 +251,7 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
       </div>
 
       {/* ── Actions ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+      <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>

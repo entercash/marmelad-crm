@@ -65,7 +65,7 @@ export function Dialog({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -73,26 +73,26 @@ export function Dialog({
       {/* Panel */}
       <div
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-xl bg-white shadow-2xl",
+          "relative z-10 w-full max-w-lg rounded-xl border border-white/10 bg-slate-900/90 shadow-2xl backdrop-blur-xl",
           className,
         )}
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+        <div className="flex items-start justify-between border-b border-white/10 px-6 py-4">
           <div>
             <h2
               id="dialog-title"
-              className="text-base font-semibold text-slate-900"
+              className="text-base font-semibold text-white"
             >
               {title}
             </h2>
             {description && (
-              <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+              <p className="mt-0.5 text-xs text-slate-400">{description}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             aria-label="Close dialog"
           >
             <X className="h-4 w-4" />

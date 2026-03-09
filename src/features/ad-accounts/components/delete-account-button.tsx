@@ -50,7 +50,7 @@ export function DeleteAccountButton({ id, name }: DeleteAccountButtonProps) {
     return (
       <button
         onClick={() => setStep("confirm")}
-        className="rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+        className="rounded p-1 text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
         title={`Delete ${name}`}
         aria-label={`Delete ${name}`}
       >
@@ -66,7 +66,7 @@ export function DeleteAccountButton({ id, name }: DeleteAccountButtonProps) {
   // confirm
   return (
     <span className="flex flex-col items-end gap-1">
-      <span className="max-w-[220px] text-right text-xs font-medium text-slate-700">
+      <span className="max-w-[220px] text-right text-xs font-medium text-slate-300">
         Delete &ldquo;{name}&rdquo;?
       </span>
 
@@ -77,14 +77,14 @@ export function DeleteAccountButton({ id, name }: DeleteAccountButtonProps) {
       <span className="flex items-center gap-1.5">
         <button
           onClick={handleDelete}
-          className="text-xs font-medium text-red-600 hover:text-red-700"
+          className="text-xs font-medium text-red-400 hover:text-red-300"
         >
           Confirm delete
         </button>
-        <span className="text-slate-300" aria-hidden="true">|</span>
+        <span className="text-slate-600" aria-hidden="true">|</span>
         <button
           onClick={reset}
-          className="text-xs text-slate-400 hover:text-slate-600"
+          className="text-xs text-slate-400 hover:text-slate-200"
         >
           Cancel
         </button>

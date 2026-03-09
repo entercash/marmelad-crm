@@ -1,20 +1,7 @@
 "use client";
 
 /**
- * AccountCard — renders a single ad-account as a card.
- *
- * Layout:
- *   ┌────────────────────────────────────────┐
- *   │ [StatusBadge]              [Edit] [Del] │
- *   │ Account Name                            │
- *   │ [Platform chip]  [Type chip]            │
- *   │ Agency:          MediaStar              │
- *   │ Account GEO:     US                     │
- *   │ Traffic GEO:     DE                     │
- *   │ Currency:        USD ($)                │
- *   │─────────────────────────────────────────│
- *   │ Created Mar 9, 2026                     │
- *   └────────────────────────────────────────┘
+ * AccountCard — renders a single ad-account as a glassmorphism card.
  */
 
 import { Pencil } from "lucide-react";
@@ -44,11 +31,11 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "se
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
-  TABOOLA:  "bg-blue-50 text-blue-700",
-  FACEBOOK: "bg-indigo-50 text-indigo-700",
-  GOOGLE:   "bg-emerald-50 text-emerald-700",
-  TIKTOK:   "bg-pink-50 text-pink-700",
-  OTHER:    "bg-slate-100 text-slate-600",
+  TABOOLA:  "bg-blue-500/15 text-blue-400",
+  FACEBOOK: "bg-indigo-500/15 text-indigo-400",
+  GOOGLE:   "bg-emerald-500/15 text-emerald-400",
+  TIKTOK:   "bg-pink-500/15 text-pink-400",
+  OTHER:    "bg-white/10 text-slate-400",
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -84,7 +71,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   }).format(account.totalSpentUsd);
 
   return (
-    <div className="flex flex-col rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+    <div className="glass flex flex-col transition-shadow hover:shadow-[0_0_20px_rgba(59,130,246,0.1)]">
       {/* ── Header: Status + Actions ──────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-4">
         <Badge variant={STATUS_VARIANT[account.status] ?? "secondary"}>
@@ -97,7 +84,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
             agencies={agencies}
             trigger={
               <button
-                className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="rounded p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
                 title={`Edit ${account.name}`}
                 aria-label={`Edit ${account.name}`}
               >
@@ -111,12 +98,12 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
 
       {/* ── Name + Spent ────────────────────────────────────────────── */}
       <div className="px-4 pt-2">
-        <h3 className="truncate text-sm font-semibold text-slate-900" title={account.name}>
+        <h3 className="truncate text-sm font-semibold text-white" title={account.name}>
           {account.name}
         </h3>
-        <p className="mt-1 text-lg font-bold text-slate-800">
+        <p className="mt-1 text-lg font-bold text-white">
           {spentFormatted}
-          <span className="ml-1 text-xs font-normal text-slate-400">spent</span>
+          <span className="ml-1 text-xs font-normal text-slate-500">spent</span>
         </p>
       </div>
 
@@ -129,7 +116,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
         >
           {platformLabel}
         </span>
-        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+        <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-400">
           {typeLabel}
         </span>
       </div>
@@ -143,8 +130,8 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
       </div>
 
       {/* ── Footer: created date ──────────────────────────────────────── */}
-      <div className="mt-auto border-t border-slate-100 px-4 py-2.5 mt-3">
-        <span className="text-[11px] text-slate-400">
+      <div className="mt-auto border-t border-white/[0.06] px-4 py-2.5 mt-3">
+        <span className="text-[11px] text-slate-500">
           Created {formatDate(account.createdAt)}
         </span>
       </div>
@@ -157,9 +144,9 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
 function InfoRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-slate-400">{label}</span>
-      <span className="font-medium text-slate-700">
-        {value ?? <span className="text-slate-300">—</span>}
+      <span className="text-slate-500">{label}</span>
+      <span className="font-medium text-slate-200">
+        {value ?? <span className="text-slate-600">—</span>}
       </span>
     </div>
   );

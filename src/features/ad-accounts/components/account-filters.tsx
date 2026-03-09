@@ -28,8 +28,8 @@ interface AccountFiltersProps {
 // ─── Shared select class (matches account-form) ─────────────────────────────
 
 const selectClass =
-  "h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm " +
-  "transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0";
+  "h-9 rounded-md border border-white/10 bg-white/5 px-3 py-1 text-sm text-white shadow-sm " +
+  "transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:ring-offset-0";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -108,11 +108,11 @@ export function AccountFilters({ accounts, agencies }: AccountFiltersProps) {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-12">
-          <p className="text-sm font-medium text-slate-500">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] py-12">
+          <p className="text-sm font-medium text-slate-300">
             No accounts match your filters
           </p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-500">
             Try adjusting the search or status filter
           </p>
         </div>

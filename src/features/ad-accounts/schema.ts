@@ -63,7 +63,7 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountTypeValue, string> = {
 // ─── Currency constants ───────────────────────────────────────────────────────
 
 export const CURRENCIES = [
-  "USD", "EUR", "GBP", "ILS", "JPY", "CAD", "AUD", "CHF", "CNY", "BRL",
+  "USD", "EUR", "GBP", "ILS", "JPY", "CAD", "AUD", "CHF", "CNY", "BRL", "HKD",
 ] as const;
 
 export type CurrencyValue = (typeof CURRENCIES)[number];
@@ -79,6 +79,7 @@ export const CURRENCY_LABELS: Record<CurrencyValue, string> = {
   CHF: "CHF (Fr)",
   CNY: "CNY (\u00A5)",
   BRL: "BRL (R$)",
+  HKD: "HKD (HK$)",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

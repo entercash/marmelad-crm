@@ -223,6 +223,7 @@ model Account {
   accountCountry String?         // Country where the account is registered
   trafficCountry String?         // Country where traffic is being run
   currency       String          @default("USD") // Account billing currency
+  totalSpentUsd  Decimal         @default(0) @db.Decimal(14, 2) // Denormalized spend total (populated by sync jobs)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

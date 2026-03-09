@@ -77,6 +77,11 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   const platformLabel = ACCOUNT_PLATFORM_LABELS[account.platform as AccountPlatformValue] ?? account.platform;
   const typeLabel     = ACCOUNT_TYPE_LABELS[account.accountType as keyof typeof ACCOUNT_TYPE_LABELS] ?? account.accountType;
   const currencyLabel = CURRENCY_LABELS[account.currency as CurrencyValue] ?? account.currency;
+  const spentFormatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(account.totalSpentUsd);
 
   return (
     <div className="flex flex-col rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
@@ -104,11 +109,15 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
         </div>
       </div>
 
-      {/* ── Name ──────────────────────────────────────────────────────── */}
+      {/* ── Name + Spent ────────────────────────────────────────────── */}
       <div className="px-4 pt-2">
         <h3 className="truncate text-sm font-semibold text-slate-900" title={account.name}>
           {account.name}
         </h3>
+        <p className="mt-1 text-lg font-bold text-slate-800">
+          {spentFormatted}
+          <span className="ml-1 text-xs font-normal text-slate-400">spent</span>
+        </p>
       </div>
 
       {/* ── Platform + Type chips ─────────────────────────────────────── */}

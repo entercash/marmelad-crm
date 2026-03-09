@@ -26,6 +26,7 @@ export type AccountRow = {
   accountCountry: string | null;
   trafficCountry: string | null;
   currency:       string;
+  totalSpentUsd:  number;
   createdAt:      Date;
   updatedAt:      Date;
 };
@@ -79,6 +80,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
       accountCountry: r.accountCountry,
       trafficCountry: r.trafficCountry,
       currency:       r.currency,
+      totalSpentUsd:  Number(r.totalSpentUsd),
       createdAt:      r.createdAt,
       updatedAt:      r.updatedAt,
     }));

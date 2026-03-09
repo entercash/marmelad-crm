@@ -208,13 +208,13 @@ model AdAccount {
 }
 
 /// An advertising account tracked by the media buying team.
-/// Captures account credentials and lifecycle status (EMPTY → ACTIVE / BANNED).
+/// Tracks lifecycle status (EMPTY → ACTIVE / BANNED), platform, and currency.
 /// Distinct from AdAccount which represents platform-level billing accounts.
 model Account {
   id             String          @id @default(cuid())
   name           String
-  email          String
-  password       String          // plaintext — internal tool only
+  email          String?         // @deprecated — kept for backward compat
+  password       String?         // @deprecated — kept for backward compat
   agencyId       String?
   agency         Agency?         @relation(fields: [agencyId], references: [id])
   platform       AccountPlatform @default(OTHER)
@@ -222,6 +222,7 @@ model Account {
   status         AccountStatus   @default(EMPTY)
   accountCountry String?         // Country where the account is registered
   trafficCountry String?         // Country where traffic is being run
+  currency       String          @default("USD") // Account billing currency
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

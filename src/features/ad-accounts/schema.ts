@@ -60,6 +60,27 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountTypeValue, string> = {
   FARM:         "Farm",
 };
 
+// ─── Currency constants ───────────────────────────────────────────────────────
+
+export const CURRENCIES = [
+  "USD", "EUR", "GBP", "ILS", "JPY", "CAD", "AUD", "CHF", "CNY", "BRL",
+] as const;
+
+export type CurrencyValue = (typeof CURRENCIES)[number];
+
+export const CURRENCY_LABELS: Record<CurrencyValue, string> = {
+  USD: "USD ($)",
+  EUR: "EUR (\u20AC)",
+  GBP: "GBP (\u00A3)",
+  ILS: "ILS (\u20AA)",
+  JPY: "JPY (\u00A5)",
+  CAD: "CAD (C$)",
+  AUD: "AUD (A$)",
+  CHF: "CHF (Fr)",
+  CNY: "CNY (\u00A5)",
+  BRL: "BRL (R$)",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function optionalText(maxLen: number, label: string) {
@@ -78,18 +99,6 @@ export const accountSchema = z.object({
     .max(200, "Name must be 200 characters or less")
     .transform((v) => v.trim()),
 
-  email: z
-    .string()
-    .min(1, "Email is required")
-    .max(300, "Email must be 300 characters or less")
-    .transform((v) => v.trim()),
-
-  password: z
-    .string()
-    .min(1, "Password is required")
-    .max(500, "Password must be 500 characters or less")
-    .transform((v) => v.trim()),
-
   agencyId: z
     .string()
     .transform((v): string | null => (v.trim() === "" ? null : v.trim())),
@@ -105,6 +114,12 @@ export const accountSchema = z.object({
   status: z.enum(ACCOUNT_STATUSES, {
     message: "Status is required",
   }),
+
+  currency: z
+    .string()
+    .min(1, "Currency is required")
+    .max(10)
+    .default("USD"),
 
   accountCountry: optionalText(100, "Account Country"),
   trafficCountry: optionalText(100, "Traffic Country"),

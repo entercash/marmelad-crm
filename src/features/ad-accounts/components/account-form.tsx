@@ -22,6 +22,7 @@ import {
   ACCOUNT_PLATFORMS, ACCOUNT_PLATFORM_LABELS,
   ACCOUNT_TYPES,     ACCOUNT_TYPE_LABELS,
   ACCOUNT_STATUSES,  ACCOUNT_STATUS_LABELS,
+  CURRENCIES,        CURRENCY_LABELS,
 } from "@/features/ad-accounts/schema";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -104,43 +105,8 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
         {err("name") && <p className="text-xs text-red-500">{err("name")}</p>}
       </div>
 
-      {/* ── Row 2: Email + Password ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="account-email">
-            Email <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="account-email"
-            name="email"
-            type="text"
-            defaultValue={account?.email ?? ""}
-            placeholder="account@example.com"
-            disabled={pending}
-            aria-invalid={!!err("email")}
-          />
-          {err("email") && <p className="text-xs text-red-500">{err("email")}</p>}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="account-password">
-            Password <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="account-password"
-            name="password"
-            type="text"
-            defaultValue={account?.password ?? ""}
-            placeholder="Account password"
-            disabled={pending}
-            aria-invalid={!!err("password")}
-          />
-          {err("password") && <p className="text-xs text-red-500">{err("password")}</p>}
-        </div>
-      </div>
-
-      {/* ── Row 3: Agency + Status ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* ── Row 2: Agency + Status + Currency ───────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="account-agency">Agency</Label>
           <select
@@ -181,9 +147,30 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
           </select>
           {err("status") && <p className="text-xs text-red-500">{err("status")}</p>}
         </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="account-currency">
+            Currency <span className="text-red-500">*</span>
+          </Label>
+          <select
+            id="account-currency"
+            name="currency"
+            defaultValue={account?.currency ?? "USD"}
+            disabled={pending}
+            aria-invalid={!!err("currency")}
+            className={selectClass}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {CURRENCY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+          {err("currency") && <p className="text-xs text-red-500">{err("currency")}</p>}
+        </div>
       </div>
 
-      {/* ── Row 4: Platform + Account Type ───────────────────────────────── */}
+      {/* ── Row 3: Platform + Account Type ───────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="account-platform">
@@ -228,7 +215,7 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
         </div>
       </div>
 
-      {/* ── Row 5: Account Country + Traffic Country ──────────────────────── */}
+      {/* ── Row 4: Account Country + Traffic Country ──────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="account-country">Account Country</Label>
@@ -269,7 +256,7 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
           Cancel
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}
+          {pending ? "Saving\u2026" : isEdit ? "Save Changes" : "Create Account"}
         </Button>
       </div>
     </form>

@@ -4,7 +4,7 @@ import { PageHeader }      from "@/components/shared/page-header";
 import { EmptyState }      from "@/components/shared/empty-state";
 import { Badge }           from "@/components/ui/badge";
 import { PublisherSearch } from "./publisher-search";
-import { getPublishers }   from "@/features/publishers/queries";
+import { getPublishers, type PublisherRow } from "@/features/publishers/queries";
 import {
   listTypeLabel,
   listTypeVariant,
@@ -20,8 +20,15 @@ export default async function PublishersPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const publishers = await getPublishers(searchParams.search);
-  const hasSearch  = !!searchParams.search;
+  let publishers: PublisherRow[] = [];
+
+  try {
+    publishers = await getPublishers(searchParams.search);
+  } catch (err) {
+    console.error("[PublishersPage] Failed to fetch publishers:", err);
+  }
+
+  const hasSearch = !!searchParams.search;
 
   return (
     <div className="flex flex-col gap-6 p-6">

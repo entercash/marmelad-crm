@@ -40,7 +40,17 @@ function formatRoi(value: number | null): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
-  const { spent, received, roi, result } = await getDashboardSummary();
+  let spent = 0, received = 0, roi: number | null = null, result = 0;
+
+  try {
+    const summary = await getDashboardSummary();
+    spent    = summary.spent;
+    received = summary.received;
+    roi      = summary.roi;
+    result   = summary.result;
+  } catch (err) {
+    console.error("[DashboardPage] Failed to load dashboard:", err);
+  }
 
   const hasData = spent > 0 || received > 0;
 

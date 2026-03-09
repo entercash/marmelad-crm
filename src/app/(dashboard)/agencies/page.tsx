@@ -7,14 +7,20 @@ import { EmptyState }         from "@/components/shared/empty-state";
 import { Button }             from "@/components/ui/button";
 import { AgencyDialog }       from "@/features/agencies/components/agency-dialog";
 import { DeleteAgencyButton } from "@/features/agencies/components/delete-agency-button";
-import { getAgencies }        from "@/features/agencies/queries";
+import { getAgencies, type AgencyRow } from "@/features/agencies/queries";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { formatRelativeTime }            from "@/lib/format";
 
 export const metadata = { title: "Agencies" };
 
 export default async function AgenciesPage() {
-  const agencies = await getAgencies();
+  let agencies: AgencyRow[] = [];
+
+  try {
+    agencies = await getAgencies();
+  } catch (err) {
+    console.error("[AgenciesPage] Failed to fetch agencies:", err);
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">

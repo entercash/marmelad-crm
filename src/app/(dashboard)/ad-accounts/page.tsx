@@ -7,7 +7,12 @@ import { EmptyState }                        from "@/components/shared/empty-sta
 import { Button }                            from "@/components/ui/button";
 import { AccountDialog }                     from "@/features/ad-accounts/components/account-dialog";
 import { DeleteAccountButton }               from "@/features/ad-accounts/components/delete-account-button";
-import { getAccounts, getAgenciesForSelect } from "@/features/ad-accounts/queries";
+import {
+  getAccounts,
+  getAgenciesForSelect,
+  type AccountRow,
+  type AgencyOption,
+} from "@/features/ad-accounts/queries";
 import {
   ACCOUNT_STATUS_LABELS,
   ACCOUNT_PLATFORM_LABELS,
@@ -40,10 +45,17 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function AdAccountsPage() {
-  const [accounts, agencies] = await Promise.all([
-    getAccounts(),
-    getAgenciesForSelect(),
-  ]);
+  let accounts: AccountRow[]   = [];
+  let agencies: AgencyOption[] = [];
+
+  try {
+    [accounts, agencies] = await Promise.all([
+      getAccounts(),
+      getAgenciesForSelect(),
+    ]);
+  } catch (err) {
+    console.error("[AdAccountsPage] Failed to fetch data:", err);
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">

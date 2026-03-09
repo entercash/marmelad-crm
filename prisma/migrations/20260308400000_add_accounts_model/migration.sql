@@ -1,8 +1,11 @@
--- CreateEnum
-CREATE TYPE "AccountStatus" AS ENUM ('EMPTY', 'UNDER_MODERATION', 'ACTIVE', 'BANNED');
+-- CreateEnum (idempotent)
+DO $$ BEGIN
+  CREATE TYPE "AccountStatus" AS ENUM ('EMPTY', 'UNDER_MODERATION', 'ACTIVE', 'BANNED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateTable
-CREATE TABLE "accounts" (
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "accounts" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -17,8 +20,13 @@ CREATE TABLE "accounts" (
     CONSTRAINT "accounts_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "accounts_agencyId_idx" ON "accounts"("agencyId");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "accounts_agencyId_idx" ON "accounts"("agencyId");
 
--- AddForeignKey
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_agencyId_fkey" FOREIGN KEY ("agencyId") REFERENCES "agencies"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- AddForeignKey (idempotent)
+DO $$ BEGIN
+  ALTER TABLE "accounts" ADD CONSTRAINT "accounts_agencyId_fkey"
+    FOREIGN KEY ("agencyId") REFERENCES "agencies"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

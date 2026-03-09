@@ -74,6 +74,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 # Static Next.js assets (JS chunks, CSS, etc.) served by the built-in server.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Prisma schema + migrations (needed for `prisma migrate deploy` at runtime)
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# Prisma CLI + engine binaries (needed for migrate deploy)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+
 USER nextjs
 
 EXPOSE 3000

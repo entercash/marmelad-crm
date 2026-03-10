@@ -3,12 +3,14 @@
  *
  * Includes agency name via JOIN so the UI can display it directly.
  * Calculates total spent from Taboola CSV imports with agency commissions:
- *   totalWithCommissions = rawSpend × (1 + commissionPercent/100) × (1 + cryptoPaymentPercent/100)
+ *   totalCostNative = rawSpend × (1 + commissionPercent/100) × (1 + cryptoPaymentPercent/100)
+ *   totalSpentUsd   = totalCostNative converted to USD via live FX rates
  * Results are fully serializable (no Decimal or complex Prisma types).
  */
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getRates, toUsd } from "@/lib/fx-rates";
 import type { AccountStatus, AccountPlatform, AccountType } from "@prisma/client";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -30,8 +32,12 @@ export type AccountRow = {
   accountCountry: string | null;
   trafficCountry: string | null;
   currency:       string;
-  totalSpentUsd:  number;
-  rawSpent:       number;
+  /** Raw spend in the account's native currency (from CSV). */
+  rawSpentNative:  number;
+  /** Total cost in native currency (with commissions applied). */
+  totalCostNative: number;
+  /** Total cost converted to USD. */
+  totalSpentUsd:   number;
   commissionPercent:     number | null;
   cryptoPaymentPercent:  number | null;
   createdAt:      Date;
@@ -67,22 +73,26 @@ export type AccountStats = {
 
 // ─── Queries ───────────────────────────────────────────────────────────────────
 
-/** All accounts ordered by name, with agency name + real spend from CSV. */
+/** All accounts ordered by name, with agency name + real spend from CSV + FX conversion. */
 export async function getAccounts(): Promise<AccountRow[]> {
   try {
-    const rows = await prisma.account.findMany({
-      orderBy: { name: "asc" },
-      include: {
-        agency: {
-          select: {
-            id: true,
-            name: true,
-            commissionPercent: true,
-            cryptoPaymentPercent: true,
+    // Fetch accounts, agency commissions, and FX rates in parallel
+    const [rows, fxRates] = await Promise.all([
+      prisma.account.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          agency: {
+            select: {
+              id: true,
+              name: true,
+              commissionPercent: true,
+              cryptoPaymentPercent: true,
+            },
           },
         },
-      },
-    });
+      }),
+      getRates(),
+    ]);
 
     // Collect all externalIds to batch-fetch spend totals
     const externalIds = rows
@@ -106,15 +116,16 @@ export async function getAccounts(): Promise<AccountRow[]> {
     }
 
     return rows.map((r) => {
-      const rawSpent = r.externalId ? (spendMap[r.externalId] ?? 0) : 0;
+      const rawSpentNative = r.externalId ? (spendMap[r.externalId] ?? 0) : 0;
       const commPct = r.agency?.commissionPercent
         ? Number(r.agency.commissionPercent)
         : 0;
       const cryptoPct = r.agency?.cryptoPaymentPercent
         ? Number(r.agency.cryptoPaymentPercent)
         : 0;
-      const totalWithCommissions =
-        rawSpent * (1 + commPct / 100) * (1 + cryptoPct / 100);
+      const totalCostNative =
+        rawSpentNative * (1 + commPct / 100) * (1 + cryptoPct / 100);
+      const totalSpentUsd = toUsd(totalCostNative, r.currency, fxRates);
 
       return {
         id:             r.id,
@@ -128,8 +139,9 @@ export async function getAccounts(): Promise<AccountRow[]> {
         accountCountry: r.accountCountry,
         trafficCountry: r.trafficCountry,
         currency:       r.currency,
-        totalSpentUsd:  totalWithCommissions,
-        rawSpent,
+        rawSpentNative,
+        totalCostNative,
+        totalSpentUsd,
         commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
         cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
         createdAt:      r.createdAt,

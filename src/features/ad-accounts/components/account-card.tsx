@@ -66,14 +66,17 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   const typeLabel     = ACCOUNT_TYPE_LABELS[account.accountType as keyof typeof ACCOUNT_TYPE_LABELS] ?? account.accountType;
   const currencyLabel = CURRENCY_LABELS[account.currency as CurrencyValue] ?? account.currency;
 
-  const fmtUsd = (v: number) =>
+  const fmtCurrency = (v: number, cur: string) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: cur,
       minimumFractionDigits: 2,
     }).format(v);
 
-  const hasSpend = account.rawSpent > 0;
+  const fmtUsd = (v: number) => fmtCurrency(v, "USD");
+  const fmtNative = (v: number) => fmtCurrency(v, account.currency);
+  const isNonUsd = account.currency !== "USD";
+  const hasSpend = account.rawSpentNative > 0;
 
   return (
     <div className="glass flex flex-col transition-shadow hover:shadow-[0_0_20px_rgba(59,130,246,0.1)]">
@@ -115,6 +118,11 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
           {fmtUsd(account.totalSpentUsd)}
           <span className="ml-1 text-xs font-normal text-slate-500">total cost</span>
         </p>
+        {isNonUsd && hasSpend && (
+          <p className="text-xs text-slate-400">
+            {fmtNative(account.totalCostNative)}
+          </p>
+        )}
       </div>
 
       {/* ── Platform + Type chips ─────────────────────────────────────── */}
@@ -145,13 +153,15 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
           <div className="flex flex-col gap-1 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Raw spend</span>
-              <span className="font-medium text-slate-300">{fmtUsd(account.rawSpent)}</span>
+              <span className="font-medium text-slate-300">
+                {fmtNative(account.rawSpentNative)}
+              </span>
             </div>
             {account.commissionPercent !== null && account.commissionPercent > 0 && (
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Commission ({account.commissionPercent}%)</span>
                 <span className="font-medium text-amber-400/80">
-                  +{fmtUsd(account.rawSpent * account.commissionPercent / 100)}
+                  +{fmtNative(account.rawSpentNative * account.commissionPercent / 100)}
                 </span>
               </div>
             )}
@@ -159,12 +169,18 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Crypto fee ({account.cryptoPaymentPercent}%)</span>
                 <span className="font-medium text-amber-400/80">
-                  +{fmtUsd(
-                    account.rawSpent *
+                  +{fmtNative(
+                    account.rawSpentNative *
                       (1 + (account.commissionPercent ?? 0) / 100) *
                       (account.cryptoPaymentPercent / 100)
                   )}
                 </span>
+              </div>
+            )}
+            {isNonUsd && (
+              <div className="flex items-center justify-between border-t border-white/[0.06] pt-1 mt-0.5">
+                <span className="text-slate-500">≈ USD</span>
+                <span className="font-medium text-blue-400/80">{fmtUsd(account.totalSpentUsd)}</span>
               </div>
             )}
           </div>

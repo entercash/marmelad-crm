@@ -39,6 +39,8 @@ export type AccountRow = {
   totalCostNative: number;
   /** Total cost converted to USD (with commissions applied). */
   totalSpentUsd:   number;
+  /** Account purchase cost in USD (from agency). */
+  accountCostUsd:        number | null;
   commissionPercent:     number | null;
   cryptoPaymentPercent:  number | null;
   createdAt:      Date;
@@ -84,6 +86,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
           select: {
             id: true,
             name: true,
+            accountCostUsd: true,
             commissionPercent: true,
             cryptoPaymentPercent: true,
           },
@@ -147,6 +150,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         rawSpentUsd,
         totalCostNative,
         totalSpentUsd,
+        accountCostUsd:        r.agency?.accountCostUsd ? Number(r.agency.accountCostUsd) : null,
         commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
         cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
         createdAt:      r.createdAt,

@@ -61,7 +61,6 @@ export default async function CampaignsPage({
         description="Monitor status and budget across all synced campaigns"
       />
 
-      {/* ── Filters ─────────────────────────────────────────────────────────── */}
       <CampaignFilters
         trafficSources={filterOptions.trafficSources}
         defaultSearch={searchParams.search}
@@ -69,25 +68,15 @@ export default async function CampaignsPage({
         defaultSource={searchParams.source}
       />
 
-      {/* ── Table or empty state ─────────────────────────────────────────────── */}
       {campaigns.length === 0 ? (
         <EmptyState
           icon={Megaphone}
-          title={
-            hasActiveFilter
-              ? "No campaigns match your filters"
-              : "No campaigns synced yet"
-          }
-          description={
-            hasActiveFilter
-              ? "Try adjusting or clearing the filters above."
-              : "Connect Taboola in Settings to sync your campaign data."
-          }
+          title={hasActiveFilter ? "No campaigns match your filters" : "No campaigns synced yet"}
+          description={hasActiveFilter ? "Try adjusting or clearing the filters above." : "Connect Taboola in Settings to sync your campaign data."}
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          {/* Row count */}
-          <div className="border-b border-slate-100 px-4 py-2.5">
+        <div className="dark-table-wrap">
+          <div className="border-b border-white/[0.06] px-4 py-2.5">
             <span className="text-xs text-slate-400">
               {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
               {hasActiveFilter ? " (filtered)" : ""}
@@ -97,70 +86,38 @@ export default async function CampaignsPage({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                  <th className="px-4 py-3 font-medium text-slate-500">
-                    Campaign
-                  </th>
-                  <th className="px-4 py-3 font-medium text-slate-500">
-                    Source
-                  </th>
-                  <th className="px-4 py-3 font-medium text-slate-500">
-                    Ad Account
-                  </th>
-                  <th className="px-4 py-3 font-medium text-slate-500">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-500">
-                    Daily Budget
-                  </th>
-                  <th className="px-4 py-3 font-medium text-slate-500">
-                    Last Synced
-                  </th>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 font-medium text-slate-400">Campaign</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Source</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Ad Account</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Status</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-400">Daily Budget</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Last Synced</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-white/[0.05]">
                 {campaigns.map((campaign) => (
-                  <tr
-                    key={campaign.id}
-                    className="transition-colors hover:bg-slate-50/60"
-                  >
-                    {/* Campaign name */}
-                    <td className="max-w-[280px] truncate px-4 py-3 font-medium text-slate-900">
+                  <tr key={campaign.id} className="transition-colors hover:bg-white/[0.03]">
+                    <td className="max-w-[280px] truncate px-4 py-3 font-medium text-white">
                       {campaign.name}
                     </td>
-
-                    {/* Traffic source */}
-                    <td className="px-4 py-3 text-slate-500">
-                      {campaign.trafficSource.name}
+                    <td className="px-4 py-3 text-slate-400">{campaign.trafficSource.name}</td>
+                    <td className="px-4 py-3 text-slate-400">
+                      {campaign.adAccount?.name ?? <span className="text-slate-600">—</span>}
                     </td>
-
-                    {/* Ad account */}
-                    <td className="px-4 py-3 text-slate-500">
-                      {campaign.adAccount?.name ?? (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-
-                    {/* Status badge */}
                     <td className="px-4 py-3">
                       <Badge variant={campaignStatusVariant(campaign.status)}>
                         {campaignStatusLabel(campaign.status)}
                       </Badge>
                     </td>
-
-                    {/* Daily budget */}
-                    <td className="px-4 py-3 text-right text-slate-700">
+                    <td className="px-4 py-3 text-right text-slate-300">
                       {campaign.dailyBudget !== null ? (
                         formatCurrency(campaign.dailyBudget, campaign.currency)
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-slate-600">—</span>
                       )}
                     </td>
-
-                    {/* Last synced */}
-                    <td className="px-4 py-3 text-slate-400">
-                      {formatRelativeTime(campaign.lastSyncedAt)}
-                    </td>
+                    <td className="px-4 py-3 text-slate-500">{formatRelativeTime(campaign.lastSyncedAt)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -39,7 +39,6 @@ export default async function AgenciesPage() {
         }
       />
 
-      {/* ── Empty state ─────────────────────────────────────────────────────── */}
       {agencies.length === 0 && (
         <EmptyState
           icon={Building2}
@@ -58,11 +57,9 @@ export default async function AgenciesPage() {
         />
       )}
 
-      {/* ── Agencies table ──────────────────────────────────────────────────── */}
       {agencies.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          {/* Row count */}
-          <div className="border-b border-slate-100 px-4 py-2.5">
+        <div className="dark-table-wrap">
+          <div className="border-b border-white/[0.06] px-4 py-2.5">
             <span className="text-xs text-slate-400">
               {agencies.length} {agencies.length === 1 ? "agency" : "agencies"}
             </span>
@@ -71,30 +68,21 @@ export default async function AgenciesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                  <th className="px-4 py-3 font-medium text-slate-500">Name</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Website</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Contact</th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-500">
-                    Account Cost
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-500">
-                    Commission
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-500">
-                    Crypto Fee %
-                  </th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Notes</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Updated</th>
-                  <th className="px-4 py-3">
-                    <span className="sr-only">Actions</span>
-                  </th>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 font-medium text-slate-400">Name</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Website</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Contact</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-400">Account Cost</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-400">Commission</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-400">Crypto Fee %</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Notes</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Updated</th>
+                  <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-white/[0.05]">
                 {agencies.map((agency) => {
-                  // Build the serializable edit-data object (no Date or count)
                   const editData = {
                     id:                  agency.id,
                     name:                agency.name,
@@ -107,109 +95,58 @@ export default async function AgenciesPage() {
                   };
 
                   return (
-                    <tr
-                      key={agency.id}
-                      className="transition-colors hover:bg-slate-50/60"
-                    >
-                      {/* Name + linked-account count */}
+                    <tr key={agency.id} className="transition-colors hover:bg-white/[0.03]">
                       <td className="px-4 py-3">
-                        <span className="font-medium text-slate-900">
-                          {agency.name}
-                        </span>
+                        <span className="font-medium text-white">{agency.name}</span>
                         {agency.adAccountCount > 0 && (
-                          <span className="ml-2 text-xs text-slate-400">
-                            {agency.adAccountCount}&nbsp;
-                            {agency.adAccountCount === 1 ? "account" : "accounts"}
+                          <span className="ml-2 text-xs text-slate-500">
+                            {agency.adAccountCount}&nbsp;{agency.adAccountCount === 1 ? "account" : "accounts"}
                           </span>
                         )}
                       </td>
-
-                      {/* Website */}
                       <td className="px-4 py-3">
                         {agency.website ? (
                           <a
-                            href={
-                              agency.website.startsWith("http")
-                                ? agency.website
-                                : `https://${agency.website}`
-                            }
+                            href={agency.website.startsWith("http") ? agency.website : `https://${agency.website}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex max-w-[180px] items-center gap-1 truncate text-blue-600 hover:text-blue-700 hover:underline"
+                            className="inline-flex max-w-[180px] items-center gap-1 truncate text-blue-400 hover:text-blue-300 hover:underline"
                             title={agency.website}
                           >
-                            <span className="truncate">
-                              {agency.website.replace(/^https?:\/\//, "")}
-                            </span>
+                            <span className="truncate">{agency.website.replace(/^https?:\/\//, "")}</span>
                             <ExternalLink className="h-3 w-3 shrink-0" />
                           </a>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">—</span>
                         )}
                       </td>
-
-                      {/* Contact */}
-                      <td className="max-w-[160px] truncate px-4 py-3 text-slate-600">
-                        {agency.contact ?? (
-                          <span className="text-slate-300">—</span>
-                        )}
+                      <td className="max-w-[160px] truncate px-4 py-3 text-slate-300">
+                        {agency.contact ?? <span className="text-slate-600">—</span>}
                       </td>
-
-                      {/* Account cost */}
-                      <td className="px-4 py-3 text-right font-mono text-slate-700">
-                        {agency.accountCostUsd !== null ? (
-                          formatCurrency(agency.accountCostUsd)
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                      <td className="px-4 py-3 text-right font-mono text-slate-300">
+                        {agency.accountCostUsd !== null ? formatCurrency(agency.accountCostUsd) : <span className="text-slate-600">—</span>}
                       </td>
-
-                      {/* Commission */}
-                      <td className="px-4 py-3 text-right font-mono text-slate-700">
-                        {agency.commissionPercent !== null ? (
-                          formatPercent(agency.commissionPercent)
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                      <td className="px-4 py-3 text-right font-mono text-slate-300">
+                        {agency.commissionPercent !== null ? formatPercent(agency.commissionPercent) : <span className="text-slate-600">—</span>}
                       </td>
-
-                      {/* Crypto payment */}
-                      <td className="px-4 py-3 text-right font-mono text-slate-700">
-                        {agency.cryptoPaymentPercent !== null ? (
-                          formatPercent(agency.cryptoPaymentPercent)
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                      <td className="px-4 py-3 text-right font-mono text-slate-300">
+                        {agency.cryptoPaymentPercent !== null ? formatPercent(agency.cryptoPaymentPercent) : <span className="text-slate-600">—</span>}
                       </td>
-
-                      {/* Notes */}
                       <td className="px-4 py-3">
                         {agency.notes ? (
-                          <span
-                            className="block max-w-[200px] truncate text-slate-600"
-                            title={agency.notes}
-                          >
-                            {agency.notes}
-                          </span>
+                          <span className="block max-w-[200px] truncate text-slate-400" title={agency.notes}>{agency.notes}</span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">—</span>
                         )}
                       </td>
-
-                      {/* Updated */}
-                      <td className="px-4 py-3 text-slate-400">
-                        {formatRelativeTime(agency.updatedAt)}
-                      </td>
-
-                      {/* Actions */}
+                      <td className="px-4 py-3 text-slate-500">{formatRelativeTime(agency.updatedAt)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Edit */}
                           <AgencyDialog
                             agency={editData}
                             trigger={
                               <button
-                                className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                className="rounded p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
                                 title={`Edit ${agency.name}`}
                                 aria-label={`Edit ${agency.name}`}
                               >
@@ -217,13 +154,7 @@ export default async function AgenciesPage() {
                               </button>
                             }
                           />
-
-                          {/* Delete */}
-                          <DeleteAgencyButton
-                            id={agency.id}
-                            name={agency.name}
-                            adAccountCount={agency.adAccountCount}
-                          />
+                          <DeleteAgencyButton id={agency.id} name={agency.name} adAccountCount={agency.adAccountCount} />
                         </div>
                       </td>
                     </tr>

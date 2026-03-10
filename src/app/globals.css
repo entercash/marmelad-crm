@@ -56,9 +56,14 @@
   }
 }
 
-/* ── Glassmorphism utility ──────────────────────────────────────────── */
+/* ── Dark card utility ─────────────────────────────────────────────── */
 @layer components {
   .glass {
-    @apply rounded-lg border border-white/[0.08] bg-white/[0.03] shadow-lg backdrop-blur-xl;
+    @apply rounded-lg border border-white/[0.06] bg-[hsl(217,33%,13%)] shadow-lg;
+  }
+
+  /* Reusable dark table wrapper */
+  .dark-table-wrap {
+    @apply overflow-hidden rounded-lg border border-white/[0.06] bg-[hsl(217,33%,13%)] shadow-lg;
   }
 }

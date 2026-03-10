@@ -18,6 +18,9 @@ const STATUS_OPTIONS = [
   { value: "ARCHIVED", label: "Archived" },
 ];
 
+const inputClass =
+  "h-9 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50";
+
 export function CampaignFilters({
   trafficSources,
   defaultSearch,
@@ -38,22 +41,20 @@ export function CampaignFilters({
       method="GET"
       className="flex flex-wrap items-center gap-3"
     >
-      {/* Name search */}
       <input
         key={defaultSearch ?? ""}
         type="text"
         name="search"
         defaultValue={defaultSearch ?? ""}
         placeholder="Search campaigns…"
-        className="h-9 w-56 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+        className={`w-56 ${inputClass}`}
       />
 
-      {/* Status filter */}
       <select
         name="status"
         defaultValue={defaultStatus ?? ""}
         onChange={submitForm}
-        className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+        className={inputClass}
       >
         <option value="">All statuses</option>
         {STATUS_OPTIONS.map((o) => (
@@ -63,13 +64,12 @@ export function CampaignFilters({
         ))}
       </select>
 
-      {/* Traffic source filter */}
       {trafficSources.length > 0 && (
         <select
           name="source"
           defaultValue={defaultSource ?? ""}
           onChange={submitForm}
-          className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className={inputClass}
         >
           <option value="">All sources</option>
           {trafficSources.map((s) => (
@@ -80,19 +80,17 @@ export function CampaignFilters({
         </select>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
-        className="h-9 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/50"
+        className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
       >
         Search
       </button>
 
-      {/* Clear */}
       {hasFilters && (
         <Link
           href="/campaigns"
-          className="text-sm text-slate-400 hover:text-slate-700"
+          className="text-sm text-slate-400 hover:text-slate-200"
         >
           Clear
         </Link>

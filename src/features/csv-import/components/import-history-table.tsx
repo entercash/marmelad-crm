@@ -1,5 +1,5 @@
 /**
- * ImportHistoryTable — glass-styled table showing past CSV imports.
+ * ImportHistoryTable — dark-styled table showing past CSV imports.
  *
  * Server component — receives data from the page.
  */
@@ -55,10 +55,10 @@ export function ImportHistoryTable({ history }: ImportHistoryTableProps) {
   }
 
   return (
-    <div className="glass overflow-hidden">
+    <div className="dark-table-wrap">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-white/[0.08] text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+          <tr className="border-b border-white/[0.06] text-left text-xs font-medium uppercase tracking-wider text-slate-400">
             <th className="px-4 py-3">Date</th>
             <th className="px-4 py-3">File</th>
             <th className="px-4 py-3 text-right">Rows</th>
@@ -73,40 +73,40 @@ export function ImportHistoryTable({ history }: ImportHistoryTableProps) {
               key={row.id}
               className="transition-colors hover:bg-white/[0.03]"
             >
-              <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">
                 {formatDate(row.startedAt)}
               </td>
               <td className="px-4 py-3">
                 <div>
-                  <p className="truncate text-white max-w-[200px]">
+                  <p className="truncate text-slate-200 max-w-[200px] text-xs">
                     {row.fileName ?? "—"}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-[11px] text-slate-500">
                     {formatBytes(row.fileSize)}
                   </p>
                 </div>
               </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-300">
                 {row.totalRows?.toLocaleString() ?? "—"}
               </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-300">
                 {row.recordsInserted?.toLocaleString() ?? "—"}
               </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-slate-300">
+              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-300">
                 {(row.recordsSkipped ?? 0) + (row.recordsFailed ?? 0) > 0
                   ? ((row.recordsSkipped ?? 0) + (row.recordsFailed ?? 0)).toLocaleString()
                   : "0"}
               </td>
               <td className="whitespace-nowrap px-4 py-3 text-center">
                 <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                     STATUS_STYLES[row.status] ?? STATUS_STYLES.PENDING
                   }`}
                 >
                   {row.status}
                 </span>
                 {row.errorMessage && (
-                  <p className="mt-0.5 max-w-[200px] truncate text-xs text-red-400/70" title={row.errorMessage}>
+                  <p className="mt-0.5 max-w-[200px] truncate text-[11px] text-red-400/70" title={row.errorMessage}>
                     {row.errorMessage}
                   </p>
                 )}

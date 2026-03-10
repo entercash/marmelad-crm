@@ -808,6 +808,7 @@ model TaboolaCsvRow {
 
   // ── Metrics ───────────────────────────────────────────────────────────────
   spent            Decimal  @default(0) @db.Decimal(12, 2)
+  spentUsd         Decimal  @default(0) @db.Decimal(12, 2) // spent converted to USD at that day's FX rate
   clicks           Int      @default(0)
   impressions      Int      @default(0)
   conversions      Decimal  @default(0) @db.Decimal(10, 2)

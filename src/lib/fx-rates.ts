@@ -1,11 +1,10 @@
 /**
- * FX Rates — fetches live exchange rates and converts to USD.
+ * FX Rates — fetches live and historical exchange rates, converts to USD.
  *
- * Uses the free Open Exchange Rates API (no API key needed):
- *   https://open.er-api.com/v6/latest/USD
+ * Live rates:  open.er-api.com (no API key, cached 1 hour)
+ * Historical:  frankfurter.app (no API key, supports date ranges)
  *
- * Rates are cached in-memory for 1 hour to avoid hammering the API.
- * Falls back to hardcoded rates if the API is unreachable.
+ * Falls back to hardcoded rates if APIs are unreachable.
  */
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
@@ -31,35 +30,37 @@ const FALLBACK_RATES: Record<string, number> = {
   BRL: 5.0,
 };
 
-// ─── Fetch ──────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Format Date as "YYYY-MM-DD". */
+function dateStr(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+// ─── Live rates ─────────────────────────────────────────────────────────────
 
 async function fetchRates(): Promise<Record<string, number>> {
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD", {
-      next: { revalidate: 3600 }, // Next.js fetch cache: 1 hour
+      next: { revalidate: 3600 },
     });
 
-    if (!res.ok) {
-      throw new Error(`FX API responded with ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`FX API responded with ${res.status}`);
 
     const data = await res.json();
-
     if (data.result !== "success" || !data.rates) {
       throw new Error("Unexpected FX API response format");
     }
 
     return data.rates as Record<string, number>;
   } catch (err) {
-    console.warn("[fx-rates] API fetch failed, using fallback rates:", err);
+    console.warn("[fx-rates] Live API fetch failed, using fallback:", err);
     return FALLBACK_RATES;
   }
 }
 
-// ─── Public API ─────────────────────────────────────────────────────────────
-
 /**
- * Returns a map of currency codes → rate per 1 USD.
+ * Returns a map of currency codes → rate per 1 USD (live/today).
  * Cached in-memory for 1 hour.
  */
 export async function getRates(): Promise<Record<string, number>> {
@@ -74,13 +75,102 @@ export async function getRates(): Promise<Record<string, number>> {
   return rates;
 }
 
+// ─── Historical rates ───────────────────────────────────────────────────────
+
+/**
+ * Fetches historical FX rates for a date range from frankfurter.app.
+ *
+ * Returns a map: "YYYY-MM-DD" → { CUR: rate_per_1_USD, ... }
+ * For dates not in the response (weekends/holidays), the nearest
+ * previous business day's rate is used.
+ *
+ * @param startDate  First date (inclusive)
+ * @param endDate    Last date (inclusive)
+ */
+export async function getHistoricalRates(
+  startDate: Date,
+  endDate: Date,
+): Promise<Record<string, Record<string, number>>> {
+  const start = dateStr(startDate);
+  const end = dateStr(endDate);
+
+  try {
+    // frankfurter.app returns rates relative to base currency for each business day
+    const url = `https://api.frankfurter.app/${start}..${end}?from=USD`;
+    const res = await fetch(url, { cache: "force-cache" });
+
+    if (!res.ok) throw new Error(`Historical FX API responded with ${res.status}`);
+
+    const data = await res.json();
+
+    if (!data.rates || typeof data.rates !== "object") {
+      throw new Error("Unexpected historical FX API response format");
+    }
+
+    return data.rates as Record<string, Record<string, number>>;
+  } catch (err) {
+    console.warn("[fx-rates] Historical API fetch failed, using fallback:", err);
+    // Return a single entry with fallback rates for all dates
+    const result: Record<string, Record<string, number>> = {};
+    result[start] = FALLBACK_RATES;
+    return result;
+  }
+}
+
+/**
+ * Given historical rates (from getHistoricalRates), finds the rate
+ * for a specific date. If the exact date isn't available (weekend/holiday),
+ * uses the nearest previous business day.
+ */
+export function findRateForDate(
+  dateKey: string,
+  currency: string,
+  historicalRates: Record<string, Record<string, number>>,
+): number {
+  if (currency === "USD") return 1;
+
+  // Try exact date first
+  if (historicalRates[dateKey]?.[currency]) {
+    return historicalRates[dateKey][currency];
+  }
+
+  // Find nearest previous date
+  const sortedDates = Object.keys(historicalRates).sort();
+  let bestDate: string | null = null;
+  for (const d of sortedDates) {
+    if (d <= dateKey) bestDate = d;
+    else break;
+  }
+
+  if (bestDate && historicalRates[bestDate]?.[currency]) {
+    return historicalRates[bestDate][currency];
+  }
+
+  // If no previous date, try any available date
+  if (sortedDates.length > 0) {
+    const firstDate = sortedDates[0];
+    if (historicalRates[firstDate]?.[currency]) {
+      return historicalRates[firstDate][currency];
+    }
+  }
+
+  // Ultimate fallback
+  const fallback = FALLBACK_RATES[currency];
+  if (fallback) return fallback;
+
+  console.warn(`[fx-rates] No rate found for ${currency} on ${dateKey}`);
+  return 1; // Can't convert, return as-is
+}
+
+// ─── Conversion ─────────────────────────────────────────────────────────────
+
 /**
  * Converts an amount from `fromCurrency` to USD.
  *
- * @param amount     The amount in the source currency
+ * @param amount        The amount in the source currency
  * @param fromCurrency  ISO currency code (e.g. "HKD", "EUR")
- * @param rates      Pre-fetched rates map (from getRates())
- * @returns          The equivalent amount in USD
+ * @param rates         Pre-fetched rates map (from getRates())
+ * @returns             The equivalent amount in USD
  */
 export function toUsd(
   amount: number,

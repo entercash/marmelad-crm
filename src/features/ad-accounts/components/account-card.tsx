@@ -147,46 +147,6 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
         <InfoRow label="Currency" value={currencyLabel} />
       </div>
 
-      {/* ── Spend breakdown ─────────────────────────────────────────── */}
-      {hasSpend && (
-        <div className="mx-4 mt-3 rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-2">
-          <div className="flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500">Raw spend</span>
-              <span className="font-medium text-slate-300">
-                {fmtNative(account.rawSpentNative)}
-              </span>
-            </div>
-            {account.commissionPercent !== null && account.commissionPercent > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Commission ({account.commissionPercent}%)</span>
-                <span className="font-medium text-amber-400/80">
-                  +{fmtNative(account.rawSpentNative * account.commissionPercent / 100)}
-                </span>
-              </div>
-            )}
-            {account.cryptoPaymentPercent !== null && account.cryptoPaymentPercent > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Crypto fee ({account.cryptoPaymentPercent}%)</span>
-                <span className="font-medium text-amber-400/80">
-                  +{fmtNative(
-                    account.rawSpentNative *
-                      (1 + (account.commissionPercent ?? 0) / 100) *
-                      (account.cryptoPaymentPercent / 100)
-                  )}
-                </span>
-              </div>
-            )}
-            {isNonUsd && (
-              <div className="flex items-center justify-between border-t border-white/[0.06] pt-1 mt-0.5">
-                <span className="text-slate-500">≈ USD</span>
-                <span className="font-medium text-blue-400/80">{fmtUsd(account.totalSpentUsd)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Footer: created date ──────────────────────────────────────── */}
       <div className="mt-auto border-t border-white/[0.06] px-4 py-2.5 mt-3">
         <span className="text-[11px] text-slate-500">

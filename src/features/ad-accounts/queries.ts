@@ -4,13 +4,12 @@
  * Includes agency name via JOIN so the UI can display it directly.
  * Calculates total spent from Taboola CSV imports with agency commissions:
  *   totalCostNative = rawSpend × (1 + commissionPercent/100) × (1 + cryptoPaymentPercent/100)
- *   totalSpentUsd   = totalCostNative converted to USD via live FX rates
+ *   totalSpentUsd   = pre-converted spentUsd (historical FX rates applied at import time)
  * Results are fully serializable (no Decimal or complex Prisma types).
  */
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getRates, toUsd } from "@/lib/fx-rates";
 import type { AccountStatus, AccountPlatform, AccountType } from "@prisma/client";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -73,59 +72,62 @@ export type AccountStats = {
 
 // ─── Queries ───────────────────────────────────────────────────────────────────
 
-/** All accounts ordered by name, with agency name + real spend from CSV + FX conversion. */
+/** All accounts ordered by name, with agency name + real spend from CSV (spentUsd pre-converted at import). */
 export async function getAccounts(): Promise<AccountRow[]> {
   try {
-    // Fetch accounts, agency commissions, and FX rates in parallel
-    const [rows, fxRates] = await Promise.all([
-      prisma.account.findMany({
-        orderBy: { name: "asc" },
-        include: {
-          agency: {
-            select: {
-              id: true,
-              name: true,
-              commissionPercent: true,
-              cryptoPaymentPercent: true,
-            },
+    const rows = await prisma.account.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            commissionPercent: true,
+            cryptoPaymentPercent: true,
           },
         },
-      }),
-      getRates(),
-    ]);
+      },
+    });
 
     // Collect all externalIds to batch-fetch spend totals
     const externalIds = rows
       .map((r) => r.externalId)
       .filter((id): id is string => id !== null && id !== "");
 
-    // Sum raw spend from CSV per accountExternalId
-    let spendMap: Record<string, number> = {};
+    // Sum native spend AND pre-converted USD spend from CSV per accountExternalId
+    let spendMap: Record<string, { native: number; usd: number }> = {};
     if (externalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { accountExternalId: string; total: Prisma.Decimal }[]
+        { accountExternalId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT "accountExternalId", SUM("spent") as total
+        SELECT "accountExternalId",
+               SUM("spent")    as "totalNative",
+               SUM("spentUsd") as "totalUsd"
         FROM "taboola_csv_rows"
         WHERE "accountExternalId" IN (${Prisma.join(externalIds)})
         GROUP BY "accountExternalId"
       `;
       for (const sr of spendRows) {
-        spendMap[sr.accountExternalId] = Number(sr.total);
+        spendMap[sr.accountExternalId] = {
+          native: Number(sr.totalNative),
+          usd:    Number(sr.totalUsd),
+        };
       }
     }
 
     return rows.map((r) => {
-      const rawSpentNative = r.externalId ? (spendMap[r.externalId] ?? 0) : 0;
+      const spend = r.externalId ? spendMap[r.externalId] : undefined;
+      const rawSpentNative = spend?.native ?? 0;
+      const rawSpentUsd    = spend?.usd ?? 0;
       const commPct = r.agency?.commissionPercent
         ? Number(r.agency.commissionPercent)
         : 0;
       const cryptoPct = r.agency?.cryptoPaymentPercent
         ? Number(r.agency.cryptoPaymentPercent)
         : 0;
-      const totalCostNative =
-        rawSpentNative * (1 + commPct / 100) * (1 + cryptoPct / 100);
-      const totalSpentUsd = toUsd(totalCostNative, r.currency, fxRates);
+      const commMultiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
+      const totalCostNative = rawSpentNative * commMultiplier;
+      const totalSpentUsd   = rawSpentUsd * commMultiplier;
 
       return {
         id:             r.id,

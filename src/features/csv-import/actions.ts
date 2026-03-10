@@ -18,6 +18,7 @@ import { Prisma }         from "@prisma/client";
 
 import { prisma }     from "@/lib/prisma";
 import { guardWrite } from "@/lib/auth-guard";
+import { getHistoricalRates, findRateForDate, toUsd } from "@/lib/fx-rates";
 import { parseTaboolaCsv } from "./parser";
 import type { TaboolaCsvRowInput } from "./parser";
 
@@ -35,10 +36,10 @@ const UPSERT_COLUMNS = [
   "campaignStatus", "campaignBid", "campaignBidStrategy", "campaignStartDate",
   "conversionGoal", "campaignBudgetType", "campaignBudget", "spendingLimit",
   "spendingLimitType", "adTitle", "adDescription", "adStatus", "siteName",
-  "siteUrl", "country", "currency", "inventoryType", "spent", "clicks",
-  "impressions", "conversions", "conversionsValue", "servedAds", "actualCpc",
-  "actualCpa", "cpm", "ctr", "conversionRate", "roas", "syncLogId",
-  "createdAt", "updatedAt",
+  "siteUrl", "country", "currency", "inventoryType", "spent", "spentUsd",
+  "clicks", "impressions", "conversions", "conversionsValue", "servedAds",
+  "actualCpc", "actualCpa", "cpm", "ctr", "conversionRate", "roas",
+  "syncLogId", "createdAt", "updatedAt",
 ] as const;
 
 const CONFLICT_COLUMNS = [
@@ -76,15 +77,18 @@ function sqlStr(v: string | null): string {
 
 /**
  * Builds a bulk INSERT ... ON CONFLICT DO UPDATE statement for a chunk of rows.
+ * Uses pre-computed spentUsd values from historical FX rates.
  */
 function buildBulkUpsertSql(
   rows: TaboolaCsvRowInput[],
   syncLogId: string,
+  spentUsdMap: Map<TaboolaCsvRowInput, number>,
 ): string {
   const now = new Date().toISOString();
 
   const valueRows = rows.map((r) => {
     const id = generateCuid();
+    const spentUsd = spentUsdMap.get(r) ?? r.spent; // fallback to raw spent (assumes USD)
     return `(
       ${sqlStr(id)},
       ${sqlStr(toDateStr(r.day))}::date,
@@ -113,6 +117,7 @@ function buildBulkUpsertSql(
       ${sqlStr(r.currency)},
       ${sqlStr(r.inventoryType)},
       ${sqlNum(r.spent)},
+      ${sqlNum(Math.round(spentUsd * 100) / 100)},
       ${r.clicks},
       ${r.impressions},
       ${sqlNum(r.conversions)},
@@ -207,6 +212,49 @@ export async function importTaboolaCsv(formData: FormData): Promise<ImportResult
     },
   });
 
+  // ── Fetch historical FX rates for the date range in this CSV ─────────
+  let spentUsdMap = new Map<TaboolaCsvRowInput, number>();
+
+  try {
+    // Find date range and unique currencies
+    let minDate = rows[0].day;
+    let maxDate = rows[0].day;
+    const currencies = new Set<string>();
+    for (const r of rows) {
+      if (r.day < minDate) minDate = r.day;
+      if (r.day > maxDate) maxDate = r.day;
+      currencies.add(r.currency);
+    }
+
+    // Only fetch historical rates if there are non-USD currencies
+    const needsFx = Array.from(currencies).some((c) => c !== "USD");
+
+    if (needsFx) {
+      const historicalRates = await getHistoricalRates(minDate, maxDate);
+
+      for (const r of rows) {
+        if (r.currency === "USD") {
+          spentUsdMap.set(r, r.spent);
+        } else {
+          const dateKey = toDateStr(r.day);
+          const rate = findRateForDate(dateKey, r.currency, historicalRates);
+          spentUsdMap.set(r, toUsd(r.spent, r.currency, { [r.currency]: rate }));
+        }
+      }
+    } else {
+      // All USD — no conversion needed
+      for (const r of rows) {
+        spentUsdMap.set(r, r.spent);
+      }
+    }
+  } catch (err) {
+    console.warn("[importTaboolaCsv] FX rate fetch failed, using spent as-is:", err);
+    // Fallback: treat spend as USD (best effort)
+    for (const r of rows) {
+      spentUsdMap.set(r, r.spent);
+    }
+  }
+
   // Bulk upsert in chunks
   let upserted = 0;
   let failed   = 0;
@@ -214,7 +262,7 @@ export async function importTaboolaCsv(formData: FormData): Promise<ImportResult
   try {
     const chunks = chunk(rows, CHUNK_SIZE);
     const queries = chunks.map((ch) =>
-      prisma.$executeRawUnsafe(buildBulkUpsertSql(ch, syncLog.id)),
+      prisma.$executeRawUnsafe(buildBulkUpsertSql(ch, syncLog.id, spentUsdMap)),
     );
 
     // Execute all chunks in a single transaction

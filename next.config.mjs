@@ -14,6 +14,13 @@ const nextConfig = {
   images: {
     remotePatterns: [],
   },
+
+  // Allow large CSV file uploads via server actions (default is 1 MB).
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+  },
 };
 
 export default nextConfig;

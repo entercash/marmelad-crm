@@ -101,9 +101,25 @@ export function CsvUploadZone() {
     const formData = new FormData();
     formData.set("file", preview.file);
 
-    const res = await importTaboolaCsv(formData);
-    setResult(res);
-    setStep(res.success ? "success" : "error");
+    try {
+      const res = await importTaboolaCsv(formData);
+
+      if (!res) {
+        setResult({ success: false, error: "Server returned an empty response. The file may be too large or the server timed out." });
+        setStep("error");
+        return;
+      }
+
+      setResult(res);
+      setStep(res.success ? "success" : "error");
+    } catch (err) {
+      console.error("[CsvUploadZone] Import failed:", err);
+      setResult({
+        success: false,
+        error: err instanceof Error ? err.message : "Unexpected error during import",
+      });
+      setStep("error");
+    }
   }
 
   function reset() {

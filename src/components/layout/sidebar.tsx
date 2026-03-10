@@ -11,6 +11,7 @@ import {
   Building2,
   CreditCard,
   FileCheck2,
+  FileUp,
   Settings,
   Activity,
   LogOut,
@@ -42,6 +43,12 @@ const navigation: NavGroup[] = [
     items: [
       { label: "Campaigns", href: "/campaigns", icon: Megaphone },
       { label: "Publishers", href: "/publishers", icon: Globe2 },
+    ],
+  },
+  {
+    label: "Integrations",
+    items: [
+      { label: "Taboola CSV", href: "/integrations/taboola-csv", icon: FileUp },
     ],
   },
   {

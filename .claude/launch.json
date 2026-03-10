@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "/opt/homebrew/opt/node@20/bin/node",
+      "runtimeArgs": ["/opt/homebrew/opt/node@20/bin/npm", "run", "dev"],
+      "port": 3000,
+      "env": {"PATH": "/opt/homebrew/opt/node@20/bin:/usr/local/bin:/usr/bin:/bin"}
+    },
+    {
+      "name": "prisma-studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "db:studio"],
+      "port": 5555
+    }
+  ]
+}

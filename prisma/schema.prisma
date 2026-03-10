@@ -758,6 +758,80 @@ model RawImportBatch {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8b — TABOOLA CSV IMPORT
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Raw Taboola performance data imported from Dartmatics CSV exports.
+/// Granularity: one row per Ad × Site × Day × Country.
+/// Dedup key: day + campaignExternalId + adExternalId + siteExternalId + countryCode.
+/// Re-uploading a CSV with overlapping dates upserts (overwrites, no duplicates).
+model TaboolaCsvRow {
+  id String @id @default(cuid())
+
+  // ── Dimensions (form the natural unique key) ──────────────────────────────
+  day                DateTime @db.Date
+  campaignExternalId String   // Taboola Campaign ID
+  adExternalId       String   // Taboola Ad ID
+  siteExternalId     String   // Taboola Site ID
+  countryCode        String   // ISO alpha-2: "FR", "US", "XX"
+
+  // ── Account info ──────────────────────────────────────────────────────────
+  accountName       String
+  accountExternalId String // Taboola Account ID
+
+  // ── Campaign metadata ─────────────────────────────────────────────────────
+  campaignName        String
+  campaignStatus      String
+  campaignBid         Decimal? @db.Decimal(10, 4)
+  campaignBidStrategy String?
+  campaignStartDate   String?
+  conversionGoal      String?
+  campaignBudgetType  String?
+  campaignBudget      Decimal? @db.Decimal(12, 2)
+  spendingLimit       Decimal? @db.Decimal(12, 2)
+  spendingLimitType   String?
+
+  // ── Ad metadata ───────────────────────────────────────────────────────────
+  adTitle       String
+  adDescription String?
+  adStatus      String
+
+  // ── Site / Publisher metadata ──────────────────────────────────────────────
+  siteName String
+  siteUrl  String?
+
+  // ── Performance context ───────────────────────────────────────────────────
+  country       String // Full country name: "France"
+  currency      String @default("USD")
+  inventoryType String?
+
+  // ── Metrics ───────────────────────────────────────────────────────────────
+  spent            Decimal  @default(0) @db.Decimal(12, 2)
+  clicks           Int      @default(0)
+  impressions      Int      @default(0)
+  conversions      Decimal  @default(0) @db.Decimal(10, 2)
+  conversionsValue Decimal  @default(0) @db.Decimal(12, 2)
+  servedAds        Int      @default(0)
+  actualCpc        Decimal? @db.Decimal(10, 6)
+  actualCpa        Decimal? @db.Decimal(10, 6)
+  cpm              Decimal? @db.Decimal(10, 6)
+  ctr              Decimal? @db.Decimal(10, 6)
+  conversionRate   Decimal? @db.Decimal(10, 6)
+  roas             Decimal? @db.Decimal(10, 6)
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  syncLogId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([day, campaignExternalId, adExternalId, siteExternalId, countryCode])
+  @@index([day])
+  @@index([campaignExternalId, day])
+  @@index([syncLogId])
+  @@map("taboola_csv_rows")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // DOMAIN 9 — WHITE PAGES
 // ══════════════════════════════════════════════════════════════════════════════
 

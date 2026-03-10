@@ -76,7 +76,13 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   const fmtUsd = (v: number) => fmtCurrency(v, "USD");
   const fmtNative = (v: number) => fmtCurrency(v, account.currency);
   const isNonUsd = account.currency !== "USD";
-  const hasSpend = account.rawSpentNative > 0;
+  const hasSpend = account.rawSpentUsd > 0;
+  const hasCommissions = (account.commissionPercent ?? 0) > 0 || (account.cryptoPaymentPercent ?? 0) > 0;
+
+  // USD breakdown amounts
+  const commissionUsd = account.rawSpentUsd * ((account.commissionPercent ?? 0) / 100);
+  const afterCommission = account.rawSpentUsd + commissionUsd;
+  const cryptoFeeUsd = afterCommission * ((account.cryptoPaymentPercent ?? 0) / 100);
 
   return (
     <div className="glass flex flex-col transition-shadow hover:shadow-[0_0_20px_rgba(59,130,246,0.1)]">
@@ -124,6 +130,28 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
           </p>
         )}
       </div>
+
+      {/* ── Spend breakdown (USD) ─────────────────────────────────────── */}
+      {hasSpend && hasCommissions && (
+        <div className="mx-4 mt-2 rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs">
+          <div className="flex items-center justify-between text-slate-400">
+            <span>Raw spend</span>
+            <span className="text-slate-300">{fmtUsd(account.rawSpentUsd)}</span>
+          </div>
+          {(account.commissionPercent ?? 0) > 0 && (
+            <div className="mt-1 flex items-center justify-between text-slate-400">
+              <span>Commission ({account.commissionPercent}%)</span>
+              <span className="text-slate-300">+{fmtUsd(commissionUsd)}</span>
+            </div>
+          )}
+          {(account.cryptoPaymentPercent ?? 0) > 0 && (
+            <div className="mt-1 flex items-center justify-between text-slate-400">
+              <span>Crypto fee ({account.cryptoPaymentPercent}%)</span>
+              <span className="text-slate-300">+{fmtUsd(cryptoFeeUsd)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Platform + Type chips ─────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 px-4 pt-2">

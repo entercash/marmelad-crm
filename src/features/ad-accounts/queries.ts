@@ -33,9 +33,11 @@ export type AccountRow = {
   currency:       string;
   /** Raw spend in the account's native currency (from CSV). */
   rawSpentNative:  number;
+  /** Raw spend converted to USD (historical FX, no commissions). */
+  rawSpentUsd:     number;
   /** Total cost in native currency (with commissions applied). */
   totalCostNative: number;
-  /** Total cost converted to USD. */
+  /** Total cost converted to USD (with commissions applied). */
   totalSpentUsd:   number;
   commissionPercent:     number | null;
   cryptoPaymentPercent:  number | null;
@@ -142,6 +144,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         trafficCountry: r.trafficCountry,
         currency:       r.currency,
         rawSpentNative,
+        rawSpentUsd,
         totalCostNative,
         totalSpentUsd,
         commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,

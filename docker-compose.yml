@@ -9,8 +9,8 @@ services:
       POSTGRES_DB: marmelad_crm
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+    # No host port exposure — only reachable via Docker internal network.
+    # Exposing 5432 to the internet caused a ransomware attack (2026-03-11).
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -28,8 +28,7 @@ services:
     image: redis:7-alpine
     container_name: marmelad-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port exposure — only reachable via Docker internal network.
     volumes:
       - redis_data:/data
     healthcheck:

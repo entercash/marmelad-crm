@@ -100,6 +100,8 @@ export const accountSchema = z.object({
     .max(200, "Name must be 200 characters or less")
     .transform((v) => v.trim()),
 
+  externalId: optionalText(200, "External ID"),
+
   agencyId: z
     .string()
     .transform((v): string | null => (v.trim() === "" ? null : v.trim())),

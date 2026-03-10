@@ -213,6 +213,7 @@ model AdAccount {
 model Account {
   id             String          @id @default(cuid())
   name           String
+  externalId     String?         // Platform account ID (matches accountExternalId in CSV imports)
   email          String?         // @deprecated — kept for backward compat
   password       String?         // @deprecated — kept for backward compat
   agencyId       String?

@@ -88,21 +88,36 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
         </div>
       )}
 
-      {/* ── Row 1: Name ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="account-name">
-          Account name <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="account-name"
-          name="name"
-          defaultValue={account?.name ?? ""}
-          placeholder="e.g. My Taboola Account"
-          autoFocus
-          disabled={pending}
-          aria-invalid={!!err("name")}
-        />
-        {err("name") && <p className="text-xs text-red-500">{err("name")}</p>}
+      {/* ── Row 1: Name + External ID ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="account-name">
+            Account name <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="account-name"
+            name="name"
+            defaultValue={account?.name ?? ""}
+            placeholder="e.g. My Taboola Account"
+            autoFocus
+            disabled={pending}
+            aria-invalid={!!err("name")}
+          />
+          {err("name") && <p className="text-xs text-red-500">{err("name")}</p>}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="account-external-id">External Account ID</Label>
+          <Input
+            id="account-external-id"
+            name="externalId"
+            defaultValue={account?.externalId ?? ""}
+            placeholder="e.g. 12345678"
+            disabled={pending}
+            aria-invalid={!!err("externalId")}
+          />
+          {err("externalId") && <p className="text-xs text-red-500">{err("externalId")}</p>}
+        </div>
       </div>
 
       {/* ── Row 2: Agency + Status + Currency ───────────────────────────── */}

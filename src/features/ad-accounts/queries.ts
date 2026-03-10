@@ -2,9 +2,12 @@
  * Accounts — read-only data access layer.
  *
  * Includes agency name via JOIN so the UI can display it directly.
+ * Calculates total spent from Taboola CSV imports with agency commissions:
+ *   totalWithCommissions = rawSpend × (1 + commissionPercent/100) × (1 + cryptoPaymentPercent/100)
  * Results are fully serializable (no Decimal or complex Prisma types).
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AccountStatus, AccountPlatform, AccountType } from "@prisma/client";
 
@@ -18,6 +21,7 @@ export type AgencyOption = {
 export type AccountRow = {
   id:             string;
   name:           string;
+  externalId:     string | null;
   agencyId:       string | null;
   agencyName:     string | null;
   platform:       AccountPlatform;
@@ -27,6 +31,9 @@ export type AccountRow = {
   trafficCountry: string | null;
   currency:       string;
   totalSpentUsd:  number;
+  rawSpent:       number;
+  commissionPercent:     number | null;
+  cryptoPaymentPercent:  number | null;
   createdAt:      Date;
   updatedAt:      Date;
 };
@@ -38,6 +45,7 @@ export type AccountRow = {
 export type AccountEditData = {
   id:             string;
   name:           string;
+  externalId:     string | null;
   agencyId:       string | null;
   platform:       AccountPlatform;
   accountType:    AccountType;
@@ -59,31 +67,75 @@ export type AccountStats = {
 
 // ─── Queries ───────────────────────────────────────────────────────────────────
 
-/** All accounts ordered by name, with agency name resolved. */
+/** All accounts ordered by name, with agency name + real spend from CSV. */
 export async function getAccounts(): Promise<AccountRow[]> {
   try {
     const rows = await prisma.account.findMany({
       orderBy: { name: "asc" },
       include: {
-        agency: { select: { id: true, name: true } },
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            commissionPercent: true,
+            cryptoPaymentPercent: true,
+          },
+        },
       },
     });
 
-    return rows.map((r) => ({
-      id:             r.id,
-      name:           r.name,
-      agencyId:       r.agencyId,
-      agencyName:     r.agency?.name ?? null,
-      platform:       r.platform,
-      accountType:    r.accountType,
-      status:         r.status,
-      accountCountry: r.accountCountry,
-      trafficCountry: r.trafficCountry,
-      currency:       r.currency,
-      totalSpentUsd:  Number(r.totalSpentUsd),
-      createdAt:      r.createdAt,
-      updatedAt:      r.updatedAt,
-    }));
+    // Collect all externalIds to batch-fetch spend totals
+    const externalIds = rows
+      .map((r) => r.externalId)
+      .filter((id): id is string => id !== null && id !== "");
+
+    // Sum raw spend from CSV per accountExternalId
+    let spendMap: Record<string, number> = {};
+    if (externalIds.length > 0) {
+      const spendRows = await prisma.$queryRaw<
+        { accountExternalId: string; total: Prisma.Decimal }[]
+      >`
+        SELECT "accountExternalId", SUM("spent") as total
+        FROM "taboola_csv_rows"
+        WHERE "accountExternalId" IN (${Prisma.join(externalIds)})
+        GROUP BY "accountExternalId"
+      `;
+      for (const sr of spendRows) {
+        spendMap[sr.accountExternalId] = Number(sr.total);
+      }
+    }
+
+    return rows.map((r) => {
+      const rawSpent = r.externalId ? (spendMap[r.externalId] ?? 0) : 0;
+      const commPct = r.agency?.commissionPercent
+        ? Number(r.agency.commissionPercent)
+        : 0;
+      const cryptoPct = r.agency?.cryptoPaymentPercent
+        ? Number(r.agency.cryptoPaymentPercent)
+        : 0;
+      const totalWithCommissions =
+        rawSpent * (1 + commPct / 100) * (1 + cryptoPct / 100);
+
+      return {
+        id:             r.id,
+        name:           r.name,
+        externalId:     r.externalId,
+        agencyId:       r.agencyId,
+        agencyName:     r.agency?.name ?? null,
+        platform:       r.platform,
+        accountType:    r.accountType,
+        status:         r.status,
+        accountCountry: r.accountCountry,
+        trafficCountry: r.trafficCountry,
+        currency:       r.currency,
+        totalSpentUsd:  totalWithCommissions,
+        rawSpent,
+        commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
+        cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
+        createdAt:      r.createdAt,
+        updatedAt:      r.updatedAt,
+      };
+    });
   } catch (err) {
     console.error("[getAccounts] Database query failed:", err);
     return [];

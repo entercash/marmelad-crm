@@ -884,7 +884,7 @@ model WhitePage {
   url             String                    // URL of the white page
   topic           String?                   // Ad topic / vertical (e.g. "Finance", "Health")
   zohoEmail       String?                   // Zoho account email associated with this page
-  password        String?                   // Account password (plaintext — internal tool only)
+  password        String?                   // Account password (AES-256-GCM encrypted at rest)
   legalEntityData String?                   // Legal entity details (name, registration, address)
   taxNumber       String?                   // Tax / VAT number
   status          WhitePageStatus           // Current lifecycle status

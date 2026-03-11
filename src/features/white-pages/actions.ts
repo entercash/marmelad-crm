@@ -15,6 +15,7 @@ import { Prisma }         from "@prisma/client";
 
 import { prisma }          from "@/lib/prisma";
 import { guardWrite }      from "@/lib/auth-guard";
+import { safeEncrypt }     from "@/lib/crypto";
 import { whitePageSchema } from "./schema";
 
 // ─── Shared result type ────────────────────────────────────────────────────────
@@ -66,11 +67,15 @@ export async function createWhitePage(formData: FormData): Promise<ActionResult>
     };
   }
 
-  const { transferDate, ...rest } = parsed.data;
+  const { transferDate, password, ...rest } = parsed.data;
 
   try {
     await prisma.whitePage.create({
-      data: { ...rest, transferDate: toTransferDate(transferDate) },
+      data: {
+        ...rest,
+        password:     safeEncrypt(password),
+        transferDate: toTransferDate(transferDate),
+      },
     });
     revalidatePath("/white-pages");
     return { success: true };
@@ -97,12 +102,16 @@ export async function updateWhitePage(
     };
   }
 
-  const { transferDate, ...rest } = parsed.data;
+  const { transferDate, password, ...rest } = parsed.data;
 
   try {
     await prisma.whitePage.update({
       where: { id },
-      data:  { ...rest, transferDate: toTransferDate(transferDate) },
+      data: {
+        ...rest,
+        password:     safeEncrypt(password),
+        transferDate: toTransferDate(transferDate),
+      },
     });
     revalidatePath("/white-pages");
     return { success: true };

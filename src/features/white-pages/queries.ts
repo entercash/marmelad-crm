@@ -12,7 +12,8 @@
 
 import { WhitePageStatus } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { prisma }      from "@/lib/prisma";
+import { safeDecrypt } from "@/lib/crypto";
 
 export type { WhitePageStatus };
 
@@ -56,7 +57,7 @@ export type WhitePageEditData = {
  * with a secondary sort by createdAt for stable ordering within the same date.
  */
 export async function getWhitePages(): Promise<WhitePageRow[]> {
-  return prisma.whitePage.findMany({
+  const rows = await prisma.whitePage.findMany({
     orderBy: [
       { transferDate: "desc" },
       { createdAt:    "desc" },
@@ -75,4 +76,7 @@ export async function getWhitePages(): Promise<WhitePageRow[]> {
       updatedAt:       true,
     },
   });
+
+  // Decrypt passwords (handles both encrypted and legacy plaintext values)
+  return rows.map((r) => ({ ...r, password: safeDecrypt(r.password) }));
 }

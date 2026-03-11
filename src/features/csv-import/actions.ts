@@ -28,7 +28,7 @@ export type ImportResult =
   | { success: true;  totalRows: number; upserted: number; parseErrors: string[] }
   | { success: false; error: string; parseErrors?: string[] };
 
-// ─── SQL builder ────────────────────────────────────────────────────────────
+// ─── SQL builder (parameterized) ─────────────────────────────────────────────
 
 const UPSERT_COLUMNS = [
   "id", "day", "campaignExternalId", "adExternalId", "siteExternalId",
@@ -51,6 +51,11 @@ const UPDATE_COLUMNS = UPSERT_COLUMNS.filter(
   (c) => c !== "id" && c !== "createdAt" && !CONFLICT_COLUMNS.includes(c),
 );
 
+// Pre-built SQL fragments for column/conflict/update lists (static, safe to use Prisma.raw)
+const COLUMN_LIST_SQL  = Prisma.raw(UPSERT_COLUMNS.map((c) => `"${c}"`).join(", "));
+const CONFLICT_LIST_SQL = Prisma.raw(CONFLICT_COLUMNS.map((c) => `"${c}"`).join(", "));
+const UPDATE_SET_SQL   = Prisma.raw(UPDATE_COLUMNS.map((c) => `"${c}" = EXCLUDED."${c}"`).join(", "));
+
 function generateCuid(): string {
   // Simple cuid-like ID: timestamp + random (good enough for bulk inserts)
   const ts = Date.now().toString(36);
@@ -58,94 +63,77 @@ function generateCuid(): string {
   return `c${ts}${rand}`;
 }
 
-/** Formats a Date as "YYYY-MM-DD" for SQL. */
+/** Formats a Date as "YYYY-MM-DD" for FX rate lookups. */
 function toDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-/** Formats a nullable number as SQL literal. */
-function sqlNum(v: number | null): string {
-  return v === null ? "NULL" : String(v);
-}
-
-/** Formats a nullable string as SQL literal (single-quoted, escaped). */
-function sqlStr(v: string | null): string {
-  if (v === null) return "NULL";
-  // Escape single quotes by doubling them
-  return `'${v.replace(/'/g, "''")}'`;
-}
-
 /**
- * Builds a bulk INSERT ... ON CONFLICT DO UPDATE statement for a chunk of rows.
- * Uses pre-computed spentUsd values from historical FX rates.
+ * Builds a fully parameterized INSERT … ON CONFLICT DO UPDATE query.
+ * All values are passed as query parameters — no string interpolation of user data.
  */
-function buildBulkUpsertSql(
+function buildBulkUpsertQuery(
   rows: TaboolaCsvRowInput[],
   syncLogId: string,
   spentUsdMap: Map<TaboolaCsvRowInput, number>,
-): string {
-  const now = new Date().toISOString();
+): Prisma.Sql {
+  const now = new Date();
 
-  const valueRows = rows.map((r) => {
+  const rowFragments = rows.map((r) => {
     const id = generateCuid();
-    const spentUsd = spentUsdMap.get(r) ?? r.spent; // fallback to raw spent (assumes USD)
-    return `(
-      ${sqlStr(id)},
-      ${sqlStr(toDateStr(r.day))}::date,
-      ${sqlStr(r.campaignExternalId)},
-      ${sqlStr(r.adExternalId)},
-      ${sqlStr(r.siteExternalId)},
-      ${sqlStr(r.countryCode)},
-      ${sqlStr(r.accountName)},
-      ${sqlStr(r.accountExternalId)},
-      ${sqlStr(r.campaignName)},
-      ${sqlStr(r.campaignStatus)},
-      ${sqlNum(r.campaignBid)},
-      ${sqlStr(r.campaignBidStrategy)},
-      ${sqlStr(r.campaignStartDate)},
-      ${sqlStr(r.conversionGoal)},
-      ${sqlStr(r.campaignBudgetType)},
-      ${sqlNum(r.campaignBudget)},
-      ${sqlNum(r.spendingLimit)},
-      ${sqlStr(r.spendingLimitType)},
-      ${sqlStr(r.adTitle)},
-      ${sqlStr(r.adDescription)},
-      ${sqlStr(r.adStatus)},
-      ${sqlStr(r.siteName)},
-      ${sqlStr(r.siteUrl)},
-      ${sqlStr(r.country)},
-      ${sqlStr(r.currency)},
-      ${sqlStr(r.inventoryType)},
-      ${sqlNum(r.spent)},
-      ${sqlNum(Math.round(spentUsd * 100) / 100)},
+    const spentUsd = Math.round((spentUsdMap.get(r) ?? r.spent) * 100) / 100;
+
+    return Prisma.sql`(
+      ${id},
+      ${r.day},
+      ${r.campaignExternalId},
+      ${r.adExternalId},
+      ${r.siteExternalId},
+      ${r.countryCode},
+      ${r.accountName},
+      ${r.accountExternalId},
+      ${r.campaignName},
+      ${r.campaignStatus},
+      ${r.campaignBid},
+      ${r.campaignBidStrategy},
+      ${r.campaignStartDate},
+      ${r.conversionGoal},
+      ${r.campaignBudgetType},
+      ${r.campaignBudget},
+      ${r.spendingLimit},
+      ${r.spendingLimitType},
+      ${r.adTitle},
+      ${r.adDescription},
+      ${r.adStatus},
+      ${r.siteName},
+      ${r.siteUrl},
+      ${r.country},
+      ${r.currency},
+      ${r.inventoryType},
+      ${r.spent},
+      ${spentUsd},
       ${r.clicks},
       ${r.impressions},
-      ${sqlNum(r.conversions)},
-      ${sqlNum(r.conversionsValue)},
+      ${r.conversions},
+      ${r.conversionsValue},
       ${r.servedAds},
-      ${sqlNum(r.actualCpc)},
-      ${sqlNum(r.actualCpa)},
-      ${sqlNum(r.cpm)},
-      ${sqlNum(r.ctr)},
-      ${sqlNum(r.conversionRate)},
-      ${sqlNum(r.roas)},
-      ${sqlStr(syncLogId)},
-      '${now}'::timestamp,
-      '${now}'::timestamp
+      ${r.actualCpc},
+      ${r.actualCpa},
+      ${r.cpm},
+      ${r.ctr},
+      ${r.conversionRate},
+      ${r.roas},
+      ${syncLogId},
+      ${now},
+      ${now}
     )`;
   });
 
-  const columnList = UPSERT_COLUMNS.map((c) => `"${c}"`).join(", ");
-  const conflictList = CONFLICT_COLUMNS.map((c) => `"${c}"`).join(", ");
-  const updateSet = UPDATE_COLUMNS.map((c) => `"${c}" = EXCLUDED."${c}"`).join(",\n      ");
-
-  return `
-    INSERT INTO "taboola_csv_rows" (${columnList})
-    VALUES
-      ${valueRows.join(",\n      ")}
-    ON CONFLICT (${conflictList})
-    DO UPDATE SET
-      ${updateSet};
+  return Prisma.sql`
+    INSERT INTO "taboola_csv_rows" (${COLUMN_LIST_SQL})
+    VALUES ${Prisma.join(rowFragments)}
+    ON CONFLICT (${CONFLICT_LIST_SQL})
+    DO UPDATE SET ${UPDATE_SET_SQL}
   `;
 }
 
@@ -262,7 +250,7 @@ export async function importTaboolaCsv(formData: FormData): Promise<ImportResult
   try {
     const chunks = chunk(rows, CHUNK_SIZE);
     const queries = chunks.map((ch) =>
-      prisma.$executeRawUnsafe(buildBulkUpsertSql(ch, syncLog.id, spentUsdMap)),
+      prisma.$executeRaw(buildBulkUpsertQuery(ch, syncLog.id, spentUsdMap)),
     );
 
     // Execute all chunks in a single transaction

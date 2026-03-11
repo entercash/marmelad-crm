@@ -5,12 +5,14 @@
  * - No Prisma adapter needed (adapter is for OAuth account linking / DB sessions).
  * - Passwords are hashed with bcryptjs.
  * - Generic error message — never reveals whether email or password was wrong.
+ * - Email-based rate limiting: 5 attempts per 15 min (prevents brute force).
  */
 
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { loginEmailLimiter } from "@/lib/rate-limit";
 
 export const authOptions: NextAuthOptions = {
   // JWT strategy — no server-side session store needed
@@ -35,9 +37,18 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const email = credentials.email.toLowerCase().trim();
+
+        // Email-based rate limiting — blocks brute force per account
+        const emailCheck = loginEmailLimiter.check(email);
+        if (!emailCheck.allowed) {
+          console.warn(`[auth] Email rate-limited: ${email}`);
+          return null;
+        }
+
         try {
           const user = await prisma.user.findUnique({
-            where: { email: credentials.email.toLowerCase().trim() },
+            where: { email },
           });
 
           if (!user) {
@@ -52,6 +63,9 @@ export const authOptions: NextAuthOptions = {
           if (!passwordValid) {
             return null; // Generic — don't reveal "wrong password"
           }
+
+          // Successful login — reset the email rate limiter
+          loginEmailLimiter.reset(email);
 
           // Return the user object that NextAuth will encode into the JWT
           return {

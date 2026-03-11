@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { Plus, Pencil, Wallet, ArrowUpCircle, ArrowDownCircle, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Wallet, Building2, ArrowUpCircle, ArrowDownCircle, AlertTriangle } from "lucide-react";
 
 import { PageHeader }      from "@/components/shared/page-header";
 import { TopUpDialog }     from "@/features/balances/components/top-up-dialog";
@@ -10,6 +10,7 @@ import {
   getTopUps,
   getAccountsForSelect,
   getBalanceSummaries,
+  aggregateByAgency,
 } from "@/features/balances/queries";
 import type { TopUpEditData } from "@/features/balances/queries";
 
@@ -35,6 +36,8 @@ export default async function BalancesPage() {
   const activeSummaries = summaries.filter(
     (s) => s.totalTopUp > 0 || s.totalSpent > 0,
   );
+
+  const agencySummaries = aggregateByAgency(activeSummaries);
 
   const totalDeposited = summaries.reduce((sum, s) => sum + s.totalTopUp, 0);
   const totalSpent     = summaries.reduce((sum, s) => sum + s.totalSpent, 0);
@@ -93,36 +96,79 @@ export default async function BalancesPage() {
         </div>
       </div>
 
+      {/* ── By Agency ──────────────────────────────────────────────────────── */}
+      {agencySummaries.length > 0 && (
+        <div>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-400">
+            <Building2 className="h-4 w-4" />
+            By Agency
+          </h2>
+          <div className="dark-table-wrap">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400">Agency</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-center">Accounts</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Deposited</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Spent</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Remaining</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.05]">
+                {agencySummaries.map((a) => (
+                  <tr key={a.agencyName} className="transition-colors hover:bg-white/[0.03]">
+                    <td className="px-4 py-3 font-medium text-white">{a.agencyName}</td>
+                    <td className="px-4 py-3 text-center text-slate-400">{a.accountCount}</td>
+                    <td className="px-4 py-3 text-right text-emerald-400">{fmtUsd(a.totalTopUp)}</td>
+                    <td className="px-4 py-3 text-right text-slate-300">{fmtUsd(a.totalSpent)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-medium ${a.remaining < 0 ? "text-red-400" : "text-white"}`}>
+                        {fmtUsd(a.remaining)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── Per-Account Balances ────────────────────────────────────────────── */}
       {activeSummaries.length > 0 && (
-        <div className="dark-table-wrap">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/[0.06] text-left">
-                <th className="px-4 py-3 text-xs font-semibold text-slate-400">Account</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Deposited</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Spent</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Remaining</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/[0.05]">
-              {activeSummaries.map((s) => (
-                <tr key={s.accountId} className="transition-colors hover:bg-white/[0.03]">
-                  <td className="px-4 py-3 font-medium text-white">{s.accountName}</td>
-                  <td className="px-4 py-3 text-right text-emerald-400">{fmtUsd(s.totalTopUp)}</td>
-                  <td className="px-4 py-3 text-right text-slate-300">{fmtUsd(s.totalSpent)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`inline-flex items-center gap-1 font-medium ${s.remaining < 0 ? "text-red-400" : s.remaining < 100 ? "text-amber-400" : "text-white"}`}>
-                      {s.remaining < 100 && s.remaining >= 0 && (
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      )}
-                      {fmtUsd(s.remaining)}
-                    </span>
-                  </td>
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-slate-400">By Account</h2>
+          <div className="dark-table-wrap">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400">Account</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400">Agency</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Deposited</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Spent</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Remaining</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-white/[0.05]">
+                {activeSummaries.map((s) => (
+                  <tr key={s.accountId} className="transition-colors hover:bg-white/[0.03]">
+                    <td className="px-4 py-3 font-medium text-white">{s.accountName}</td>
+                    <td className="px-4 py-3 text-slate-400">{s.agencyName ?? <span className="text-slate-600">—</span>}</td>
+                    <td className="px-4 py-3 text-right text-emerald-400">{fmtUsd(s.totalTopUp)}</td>
+                    <td className="px-4 py-3 text-right text-slate-300">{fmtUsd(s.totalSpent)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`inline-flex items-center gap-1 font-medium ${s.remaining < 0 ? "text-red-400" : s.remaining < 100 ? "text-amber-400" : "text-white"}`}>
+                        {s.remaining < 100 && s.remaining >= 0 && (
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                        )}
+                        {fmtUsd(s.remaining)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -144,6 +190,7 @@ export default async function BalancesPage() {
                 <tr className="border-b border-white/[0.06] text-left">
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400">Date</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400">Account</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-400">Agency</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Amount</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400">Note</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400 text-right">Actions</th>
@@ -163,6 +210,7 @@ export default async function BalancesPage() {
                     <tr key={t.id} className="transition-colors hover:bg-white/[0.03]">
                       <td className="px-4 py-3 text-xs text-slate-400">{formatDate(t.date)}</td>
                       <td className="px-4 py-3 font-medium text-white">{t.accountName}</td>
+                      <td className="px-4 py-3 text-slate-400">{t.agencyName ?? <span className="text-slate-600">—</span>}</td>
                       <td className="px-4 py-3 text-right font-medium text-emerald-400">
                         +{fmtUsd(t.amount)}
                       </td>

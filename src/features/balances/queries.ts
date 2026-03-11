@@ -4,6 +4,7 @@
  * TopUpRow — full row shape for display in the balances table.
  * TopUpEditData — serializable subset for client component form prefill.
  * AccountBalanceSummary — balance/remaining per account.
+ * AgencyBalanceSummary — aggregated balance per agency.
  */
 
 import { Prisma } from "@prisma/client";
@@ -15,6 +16,7 @@ export type TopUpRow = {
   id:          string;
   accountId:   string;
   accountName: string;
+  agencyName:  string | null;
   amount:      number;
   date:        Date;
   note:        string | null;
@@ -40,15 +42,24 @@ export type AccountOption = {
 export type AccountBalanceSummary = {
   accountId:   string;
   accountName: string;
+  agencyName:  string | null;
   totalTopUp:  number; // total deposited
   totalSpent:  number; // raw spend in USD from CSV (no commissions)
   remaining:   number; // topUp - spent
 };
 
+export type AgencyBalanceSummary = {
+  agencyName:  string;
+  accountCount: number;
+  totalTopUp:  number;
+  totalSpent:  number;
+  remaining:   number;
+};
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 /**
- * Returns all top-ups ordered by date descending, with account name.
+ * Returns all top-ups ordered by date descending, with account name and agency.
  */
 export async function getTopUps(): Promise<TopUpRow[]> {
   try {
@@ -56,7 +67,11 @@ export async function getTopUps(): Promise<TopUpRow[]> {
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       include: {
         account: {
-          select: { id: true, name: true },
+          select: {
+            id: true,
+            name: true,
+            agency: { select: { name: true } },
+          },
         },
       },
     });
@@ -65,6 +80,7 @@ export async function getTopUps(): Promise<TopUpRow[]> {
       id:          r.id,
       accountId:   r.accountId,
       accountName: r.account.name,
+      agencyName:  r.account.agency?.name ?? null,
       amount:      Number(r.amount),
       date:        r.date,
       note:        r.note,
@@ -98,7 +114,12 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
   try {
     const accounts = await prisma.account.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, externalId: true },
+      select: {
+        id: true,
+        name: true,
+        externalId: true,
+        agency: { select: { name: true } },
+      },
     });
 
     // Sum top-ups per account (resilient)
@@ -142,6 +163,7 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
       return {
         accountId:   acct.id,
         accountName: acct.name,
+        agencyName:  acct.agency?.name ?? null,
         totalTopUp,
         totalSpent,
         remaining:   totalTopUp - totalSpent,
@@ -151,4 +173,32 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
     console.error("[getBalanceSummaries] Query failed:", err);
     return [];
   }
+}
+
+/**
+ * Aggregates balance summaries by agency.
+ */
+export function aggregateByAgency(summaries: AccountBalanceSummary[]): AgencyBalanceSummary[] {
+  const map = new Map<string, AgencyBalanceSummary>();
+
+  for (const s of summaries) {
+    const name = s.agencyName ?? "No Agency";
+    const existing = map.get(name);
+    if (existing) {
+      existing.accountCount += 1;
+      existing.totalTopUp += s.totalTopUp;
+      existing.totalSpent += s.totalSpent;
+      existing.remaining += s.remaining;
+    } else {
+      map.set(name, {
+        agencyName:   name,
+        accountCount: 1,
+        totalTopUp:   s.totalTopUp,
+        totalSpent:   s.totalSpent,
+        remaining:    s.remaining,
+      });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.totalTopUp - a.totalTopUp);
 }

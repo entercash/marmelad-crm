@@ -10,6 +10,7 @@ import {
   Receipt,
   Building2,
   CreditCard,
+  Wallet,
   FileCheck2,
   FileUp,
   Settings,
@@ -58,6 +59,7 @@ const navigation: NavGroup[] = [
       { label: "Agencies",    href: "/agencies",    icon: Building2 },
       { label: "White Pages", href: "/white-pages", icon: FileCheck2 },
       { label: "Ad Accounts", href: "/ad-accounts", icon: CreditCard },
+      { label: "Balances",    href: "/balances",    icon: Wallet },
     ],
   },
   {

@@ -4,7 +4,7 @@
  * AccountCard — renders a single ad-account card (dark theme).
  */
 
-import { Pencil, Calendar } from "lucide-react";
+import { Pencil, Calendar, Wallet } from "lucide-react";
 
 import { AccountDialog }       from "./account-dialog";
 import { DeleteAccountButton } from "./delete-account-button";
@@ -176,6 +176,25 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
         <InfoRow label="Traffic GEO" value={account.trafficCountry} />
         <InfoRow label="Currency" value={currencyLabel} last />
       </div>
+
+      {/* ── Balance bar ────────────────────────────────────────────────── */}
+      {account.totalTopUp > 0 && (
+        <div className="mx-6 mt-3 rounded-xl border border-white/[0.06] bg-[hsl(222,47%,11%)] px-4 py-3 text-xs">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="inline-flex items-center gap-1.5">
+              <Wallet className="h-3 w-3" />
+              Deposited
+            </span>
+            <span className="font-medium text-emerald-400">{fmtUsd(account.totalTopUp)}</span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-slate-400">
+            <span>Remaining</span>
+            <span className={`font-medium ${account.remaining < 0 ? "text-red-400" : account.remaining < 100 ? "text-amber-400" : "text-white"}`}>
+              {fmtUsd(account.remaining)}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Footer: created date ──────────────────────────────────────── */}
       <div className="mt-auto border-t border-white/[0.06] px-6 py-3 mt-4">

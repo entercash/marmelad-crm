@@ -43,6 +43,10 @@ export type AccountRow = {
   accountCostUsd:        number | null;
   commissionPercent:     number | null;
   cryptoPaymentPercent:  number | null;
+  /** Total deposited via top-ups (USD). */
+  totalTopUp:     number;
+  /** Remaining balance = totalTopUp - totalSpentUsd. */
+  remaining:      number;
   createdAt:      Date;
   updatedAt:      Date;
 };
@@ -94,6 +98,15 @@ export async function getAccounts(): Promise<AccountRow[]> {
       },
     });
 
+    // Batch-fetch top-up totals per account
+    const topUpAggs = await prisma.accountTopUp.groupBy({
+      by: ["accountId"],
+      _sum: { amount: true },
+    });
+    const topUpMap = new Map(
+      topUpAggs.map((a) => [a.accountId, Number(a._sum.amount ?? 0)]),
+    );
+
     // Collect all externalIds to batch-fetch spend totals
     const externalIds = rows
       .map((r) => r.externalId)
@@ -133,6 +146,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
       const commMultiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
       const totalCostNative = rawSpentNative * commMultiplier;
       const totalSpentUsd   = rawSpentUsd * commMultiplier;
+      const totalTopUp      = topUpMap.get(r.id) ?? 0;
 
       return {
         id:             r.id,
@@ -153,6 +167,8 @@ export async function getAccounts(): Promise<AccountRow[]> {
         accountCostUsd:        r.agency?.accountCostUsd ? Number(r.agency.accountCostUsd) : null,
         commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
         cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
+        totalTopUp,
+        remaining:      totalTopUp - totalSpentUsd,
         createdAt:      r.createdAt,
         updatedAt:      r.updatedAt,
       };

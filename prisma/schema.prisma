@@ -226,6 +226,8 @@ model Account {
   currency       String          @default("USD") // Account billing currency
   totalSpentUsd  Decimal         @default(0) @db.Decimal(14, 2) // Denormalized spend total (populated by sync jobs)
 
+  topUps AccountTopUp[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -831,6 +833,30 @@ model TaboolaCsvRow {
   @@index([campaignExternalId, day])
   @@index([syncLogId])
   @@map("taboola_csv_rows")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8c — ACCOUNT BALANCES (operational, not P&L)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Records a top-up (deposit) made to an advertising account.
+/// Purely operational — does NOT affect P&L, stats, or spend calculations.
+/// Used to track remaining balance and decide when to top-up again.
+model AccountTopUp {
+  id        String   @id @default(cuid())
+  accountId String
+  amount    Decimal  @db.Decimal(12, 2) // always in USD
+  date      DateTime @db.Date           // date the top-up was made
+  note      String?                     // optional comment
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([date])
+  @@map("account_top_ups")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -10,11 +10,22 @@ import { DeleteWhitePageButton } from "@/features/white-pages/components/delete-
 import { getWhitePages, type WhitePageRow } from "@/features/white-pages/queries";
 import {
   WHITE_PAGE_STATUS_LABELS,
-  WHITE_PAGE_STATUS_BADGE_CLASS,
+  type WhitePageStatusValue,
 } from "@/features/white-pages/schema";
 import { formatDate } from "@/lib/format";
 
 export const metadata = { title: "White Pages" };
+
+// ─── Dark-themed status badge styles ────────────────────────────────────────
+
+const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
+  PREMODERATION:        { dot: "bg-slate-400",    bg: "bg-slate-500/15",   text: "text-slate-400" },
+  ACCOUNT_ISSUED:       { dot: "bg-blue-400",     bg: "bg-blue-500/15",    text: "text-blue-400" },
+  WARMUP_STARTED:       { dot: "bg-amber-400",    bg: "bg-amber-500/15",   text: "text-amber-400" },
+  IN_PROGRESS:          { dot: "bg-emerald-400",  bg: "bg-emerald-500/15", text: "text-emerald-400" },
+  PREMODERATION_FAILED: { dot: "bg-red-400",      bg: "bg-red-500/15",     text: "text-red-400" },
+  ACCOUNT_BANNED:       { dot: "bg-red-400",      bg: "bg-red-500/15",     text: "text-red-400" },
+};
 
 export default async function WhitePagesPage() {
   let whitePages: WhitePageRow[] = [];
@@ -62,9 +73,9 @@ export default async function WhitePagesPage() {
 
       {/* ── White Pages table ────────────────────────────────────────────────── */}
       {whitePages.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="dark-table-wrap">
           {/* Row count */}
-          <div className="border-b border-slate-100 px-4 py-2.5">
+          <div className="border-b border-white/[0.06] px-4 py-2.5">
             <span className="text-xs text-slate-400">
               {whitePages.length}{" "}
               {whitePages.length === 1 ? "white page" : "white pages"}
@@ -74,26 +85,24 @@ export default async function WhitePagesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                  <th className="px-4 py-3 font-medium text-slate-500">Date</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">GEO</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">URL</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Topic</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Zoho Email</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Password</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Legal Entity</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Tax #</th>
-                  <th className="px-4 py-3 font-medium text-slate-500">Status</th>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="px-4 py-3 font-medium text-slate-400">Date</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">GEO</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">URL</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Topic</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Zoho Email</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Password</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Legal Entity</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Tax #</th>
+                  <th className="px-4 py-3 font-medium text-slate-400">Status</th>
                   <th className="px-4 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-white/[0.05]">
                 {whitePages.map((wp) => {
-                  // Build the serialisable edit-data object (no Date objects).
-                  // transferDate is converted to "YYYY-MM-DD" for the date input.
                   const editData = {
                     id:              wp.id,
                     transferDate:    wp.transferDate.toISOString().slice(0, 10),
@@ -107,24 +116,26 @@ export default async function WhitePagesPage() {
                     status:          wp.status,
                   };
 
+                  const statusStyle = STATUS_STYLES[wp.status] ?? STATUS_STYLES.PREMODERATION;
+
                   return (
                     <tr
                       key={wp.id}
-                      className="transition-colors hover:bg-slate-50/60"
+                      className="transition-colors hover:bg-white/[0.03]"
                     >
                       {/* Transfer date */}
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-300">
                         {formatDate(wp.transferDate)}
                       </td>
 
                       {/* GEO */}
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs font-semibold text-slate-700">
+                        <span className="font-mono text-xs font-semibold text-white">
                           {wp.geo}
                         </span>
                       </td>
 
-                      {/* URL — clickable, strips protocol for display */}
+                      {/* URL */}
                       <td className="px-4 py-3">
                         <a
                           href={
@@ -134,7 +145,7 @@ export default async function WhitePagesPage() {
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex max-w-[160px] items-center gap-1 truncate text-blue-600 hover:text-blue-700 hover:underline"
+                          className="inline-flex max-w-[160px] items-center gap-1 truncate text-blue-400 hover:text-blue-300 hover:underline"
                           title={wp.url}
                         >
                           <span className="truncate">
@@ -148,13 +159,13 @@ export default async function WhitePagesPage() {
                       <td className="px-4 py-3">
                         {wp.topic ? (
                           <span
-                            className="block max-w-[120px] truncate text-slate-600"
+                            className="block max-w-[120px] truncate text-slate-300"
                             title={wp.topic}
                           >
                             {wp.topic}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">&mdash;</span>
                         )}
                       </td>
 
@@ -162,24 +173,24 @@ export default async function WhitePagesPage() {
                       <td className="px-4 py-3">
                         {wp.zohoEmail ? (
                           <span
-                            className="block max-w-[150px] truncate text-slate-600"
+                            className="block max-w-[150px] truncate text-slate-300"
                             title={wp.zohoEmail}
                           >
                             {wp.zohoEmail}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">&mdash;</span>
                         )}
                       </td>
 
-                      {/* Password — shown as plain text (internal tool) */}
+                      {/* Password */}
                       <td className="px-4 py-3">
                         {wp.password ? (
-                          <span className="font-mono text-xs text-slate-600">
+                          <span className="font-mono text-xs text-slate-300">
                             {wp.password}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">&mdash;</span>
                         )}
                       </td>
 
@@ -187,45 +198,45 @@ export default async function WhitePagesPage() {
                       <td className="px-4 py-3">
                         {wp.legalEntityData ? (
                           <span
-                            className="block max-w-[150px] truncate text-slate-600"
+                            className="block max-w-[150px] truncate text-slate-300"
                             title={wp.legalEntityData}
                           >
                             {wp.legalEntityData}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">&mdash;</span>
                         )}
                       </td>
 
                       {/* Tax number */}
                       <td className="px-4 py-3">
                         {wp.taxNumber ? (
-                          <span className="font-mono text-xs text-slate-600">
+                          <span className="font-mono text-xs text-slate-300">
                             {wp.taxNumber}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-600">&mdash;</span>
                         )}
                       </td>
 
                       {/* Status badge */}
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${WHITE_PAGE_STATUS_BADGE_CLASS[wp.status]}`}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}
                         >
-                          {WHITE_PAGE_STATUS_LABELS[wp.status]}
+                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} />
+                          {WHITE_PAGE_STATUS_LABELS[wp.status as WhitePageStatusValue]}
                         </span>
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Edit */}
                           <WhitePageDialog
                             whitePage={editData}
                             trigger={
                               <button
-                                className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                className="rounded p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
                                 title="Edit white page"
                                 aria-label="Edit white page"
                               >
@@ -233,8 +244,6 @@ export default async function WhitePagesPage() {
                               </button>
                             }
                           />
-
-                          {/* Delete */}
                           <DeleteWhitePageButton id={wp.id} />
                         </div>
                       </td>

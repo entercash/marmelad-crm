@@ -68,7 +68,7 @@ export function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Global error */}
       {error && (
-        <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -129,7 +129,7 @@ export function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
           name="role"
           required
           defaultValue={user?.role ?? "BUYER"}
-          className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm text-slate-900 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"
+          className="flex h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-100 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40"
         >
           {USER_ROLES.map((role) => (
             <option key={role} value={role}>

@@ -82,7 +82,7 @@ export function WhitePageForm({
 
       {/* Global error banner */}
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -170,7 +170,7 @@ export function WhitePageForm({
             required
             defaultValue={whitePage?.status ?? "PREMODERATION"}
             aria-invalid={!!err("status")}
-            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-100 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {WHITE_PAGE_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -260,7 +260,7 @@ export function WhitePageForm({
       </div>
 
       {/* ── Actions ───────────────────────────────────────────────────────── */}
-      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+      <div className="flex justify-end gap-2 border-t border-white/[0.06] pt-3">
         <Button
           type="button"
           variant="outline"

@@ -50,71 +50,90 @@ export type AccountBalanceSummary = {
  * Returns all top-ups ordered by date descending, with account name.
  */
 export async function getTopUps(): Promise<TopUpRow[]> {
-  const rows = await prisma.accountTopUp.findMany({
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-    include: {
-      account: {
-        select: { id: true, name: true },
+  try {
+    const rows = await prisma.accountTopUp.findMany({
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      include: {
+        account: {
+          select: { id: true, name: true },
+        },
       },
-    },
-  });
+    });
 
-  return rows.map((r) => ({
-    id:          r.id,
-    accountId:   r.accountId,
-    accountName: r.account.name,
-    amount:      Number(r.amount),
-    date:        r.date,
-    note:        r.note,
-    createdAt:   r.createdAt,
-  }));
+    return rows.map((r) => ({
+      id:          r.id,
+      accountId:   r.accountId,
+      accountName: r.account.name,
+      amount:      Number(r.amount),
+      date:        r.date,
+      note:        r.note,
+      createdAt:   r.createdAt,
+    }));
+  } catch (err) {
+    console.error("[getTopUps] Query failed:", err);
+    return [];
+  }
 }
 
 /**
  * Minimal account list for the dropdown in the top-up form.
  */
 export async function getAccountsForSelect(): Promise<AccountOption[]> {
-  return prisma.account.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  try {
+    return await prisma.account.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+  } catch (err) {
+    console.error("[getAccountsForSelect] Query failed:", err);
+    return [];
+  }
 }
 
 /**
  * Computes balance summary per account: total top-ups vs total spent.
  */
 export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
-  // Get all accounts with their agency commission info
-  const accounts = await prisma.account.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      agency: {
-        select: {
-          commissionPercent: true,
-          cryptoPaymentPercent: true,
+  try {
+    const accounts = await prisma.account.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        agency: {
+          select: {
+            commissionPercent: true,
+            cryptoPaymentPercent: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  // Sum top-ups per account
-  const topUpAggs = await prisma.accountTopUp.groupBy({
-    by: ["accountId"],
-    _sum: { amount: true },
-  });
-  const topUpMap = new Map(
-    topUpAggs.map((a) => [a.accountId, Number(a._sum.amount ?? 0)]),
-  );
+    // Sum top-ups per account (resilient)
+    let topUpMap = new Map<string, number>();
+    try {
+      const topUpAggs = await prisma.accountTopUp.groupBy({
+        by: ["accountId"],
+        _sum: { amount: true },
+      });
+      topUpMap = new Map(
+        topUpAggs.map((a) => [a.accountId, Number(a._sum.amount ?? 0)]),
+      );
+    } catch {
+      // table may not exist yet
+    }
 
-  return accounts.map((acct) => {
-    const totalTopUp = topUpMap.get(acct.id) ?? 0;
-    const totalSpent = Number(acct.totalSpentUsd);
-    return {
-      accountId:   acct.id,
-      accountName: acct.name,
-      totalTopUp,
-      totalSpent,
-      remaining:   totalTopUp - totalSpent,
-    };
-  });
+    return accounts.map((acct) => {
+      const totalTopUp = topUpMap.get(acct.id) ?? 0;
+      const totalSpent = Number(acct.totalSpentUsd);
+      return {
+        accountId:   acct.id,
+        accountName: acct.name,
+        totalTopUp,
+        totalSpent,
+        remaining:   totalTopUp - totalSpent,
+      };
+    });
+  } catch (err) {
+    console.error("[getBalanceSummaries] Query failed:", err);
+    return [];
+  }
 }

@@ -98,14 +98,19 @@ export async function getAccounts(): Promise<AccountRow[]> {
       },
     });
 
-    // Batch-fetch top-up totals per account
-    const topUpAggs = await prisma.accountTopUp.groupBy({
-      by: ["accountId"],
-      _sum: { amount: true },
-    });
-    const topUpMap = new Map(
-      topUpAggs.map((a) => [a.accountId, Number(a._sum.amount ?? 0)]),
-    );
+    // Batch-fetch top-up totals per account (resilient — empty map on error)
+    let topUpMap = new Map<string, number>();
+    try {
+      const topUpAggs = await prisma.accountTopUp.groupBy({
+        by: ["accountId"],
+        _sum: { amount: true },
+      });
+      topUpMap = new Map(
+        topUpAggs.map((a) => [a.accountId, Number(a._sum.amount ?? 0)]),
+      );
+    } catch {
+      // table may not exist yet if migration hasn't been applied
+    }
 
     // Collect all externalIds to batch-fetch spend totals
     const externalIds = rows

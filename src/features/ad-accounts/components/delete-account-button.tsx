@@ -50,7 +50,7 @@ export function DeleteAccountButton({ id, name }: DeleteAccountButtonProps) {
     return (
       <button
         onClick={() => setStep("confirm")}
-        className="rounded p-1 text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
         title={`Delete ${name}`}
         aria-label={`Delete ${name}`}
       >

@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * AccountCard — renders a single ad-account as a glassmorphism card.
+ * AccountCard — renders a single ad-account card (dark theme).
  */
 
-import { Pencil } from "lucide-react";
+import { Pencil, Calendar } from "lucide-react";
 
-import { Badge }               from "@/components/ui/badge";
 import { AccountDialog }       from "./account-dialog";
 import { DeleteAccountButton } from "./delete-account-button";
 import { formatDate }          from "@/lib/format";
@@ -23,19 +22,19 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
-  ACTIVE:           "success",
-  UNDER_MODERATION: "warning",
-  BANNED:           "destructive",
-  EMPTY:            "secondary",
+const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
+  ACTIVE:           { dot: "bg-emerald-400", bg: "bg-emerald-500/15", text: "text-emerald-400" },
+  UNDER_MODERATION: { dot: "bg-amber-400",   bg: "bg-amber-500/15",   text: "text-amber-400" },
+  BANNED:           { dot: "bg-red-400",      bg: "bg-red-500/15",     text: "text-red-400" },
+  EMPTY:            { dot: "bg-slate-400",    bg: "bg-slate-500/15",   text: "text-slate-400" },
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
-  TABOOLA:  "bg-blue-500/15 text-blue-400",
-  FACEBOOK: "bg-indigo-500/15 text-indigo-400",
-  GOOGLE:   "bg-emerald-500/15 text-emerald-400",
-  TIKTOK:   "bg-pink-500/15 text-pink-400",
-  OTHER:    "bg-white/10 text-slate-400",
+  TABOOLA:  "border-blue-500/20 bg-blue-500/10 text-blue-400",
+  FACEBOOK: "border-indigo-500/20 bg-indigo-500/10 text-indigo-400",
+  GOOGLE:   "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  TIKTOK:   "border-pink-500/20 bg-pink-500/10 text-pink-400",
+  OTHER:    "border-white/10 bg-white/5 text-slate-400",
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -79,18 +78,21 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   const hasSpend = account.rawSpentUsd > 0;
   const hasCommissions = (account.commissionPercent ?? 0) > 0 || (account.cryptoPaymentPercent ?? 0) > 0;
 
-  // USD breakdown amounts
+  // USD breakdown
   const commissionUsd = account.rawSpentUsd * ((account.commissionPercent ?? 0) / 100);
   const afterCommission = account.rawSpentUsd + commissionUsd;
   const cryptoFeeUsd = afterCommission * ((account.cryptoPaymentPercent ?? 0) / 100);
 
+  const statusStyle = STATUS_STYLES[account.status] ?? STATUS_STYLES.EMPTY;
+
   return (
-    <div className="glass flex flex-col transition-shadow hover:shadow-[0_0_20px_rgba(59,130,246,0.1)]">
+    <div className="group flex flex-col rounded-2xl border border-white/[0.08] bg-[hsl(217,33%,13%)] shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)]">
       {/* ── Header: Status + Actions ──────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 pt-4">
-        <Badge variant={STATUS_VARIANT[account.status] ?? "secondary"}>
+      <div className="flex items-center justify-between px-6 pt-5">
+        <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${statusStyle.bg} ${statusStyle.text}`}>
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} />
           {statusLabel}
-        </Badge>
+        </span>
 
         <div className="flex items-center gap-1">
           <AccountDialog
@@ -98,7 +100,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
             agencies={agencies}
             trigger={
               <button
-                className="rounded p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-slate-200"
                 title={`Edit ${account.name}`}
                 aria-label={`Edit ${account.name}`}
               >
@@ -111,73 +113,74 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
       </div>
 
       {/* ── Name + Total Spent ──────────────────────────────────────── */}
-      <div className="px-4 pt-2">
-        <h3 className="truncate text-sm font-semibold text-white" title={account.name}>
+      <div className="px-6 pt-3">
+        <h3 className="truncate text-xl font-bold tracking-tight text-white" title={account.name}>
           {account.name}
         </h3>
         {account.externalId && (
-          <p className="mt-0.5 text-[11px] text-slate-500 font-mono">
+          <p className="mt-0.5 font-mono text-[11px] text-slate-500">
             ID: {account.externalId}
           </p>
         )}
-        <p className="mt-1 text-lg font-bold text-white">
+        <p className="mt-2 text-[32px] font-extrabold leading-none tracking-tight text-white">
           {fmtUsd(account.totalSpentUsd)}
-          <span className="ml-1 text-xs font-normal text-slate-500">total cost</span>
         </p>
-        {isNonUsd && hasSpend && (
-          <p className="text-xs text-slate-400">
-            {fmtNative(account.totalCostNative)}
-          </p>
-        )}
+        <p className="mt-1 text-xs text-slate-500">
+          total cost
+          {isNonUsd && hasSpend && (
+            <span className="ml-2 text-slate-400">{fmtNative(account.totalCostNative)}</span>
+          )}
+        </p>
       </div>
 
       {/* ── Spend breakdown (USD) ─────────────────────────────────────── */}
       {hasSpend && hasCommissions && (
-        <div className="mx-4 mt-2 rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs">
+        <div className="mx-6 mt-3 rounded-xl border border-white/[0.06] bg-[hsl(222,47%,11%)] px-4 py-3 text-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span>Raw spend</span>
-            <span className="text-slate-300">{fmtUsd(account.rawSpentUsd)}</span>
+            <span className="font-medium text-slate-300">{fmtUsd(account.rawSpentUsd)}</span>
           </div>
           {(account.commissionPercent ?? 0) > 0 && (
-            <div className="mt-1 flex items-center justify-between text-slate-400">
+            <div className="mt-1.5 flex items-center justify-between text-slate-400">
               <span>Commission ({account.commissionPercent}%)</span>
-              <span className="text-slate-300">+{fmtUsd(commissionUsd)}</span>
+              <span className="font-medium text-violet-400">+{fmtUsd(commissionUsd)}</span>
             </div>
           )}
           {(account.cryptoPaymentPercent ?? 0) > 0 && (
-            <div className="mt-1 flex items-center justify-between text-slate-400">
+            <div className="mt-1.5 flex items-center justify-between text-slate-400">
               <span>Crypto fee ({account.cryptoPaymentPercent}%)</span>
-              <span className="text-slate-300">+{fmtUsd(cryptoFeeUsd)}</span>
+              <span className="font-medium text-violet-400">+{fmtUsd(cryptoFeeUsd)}</span>
             </div>
           )}
         </div>
       )}
 
       {/* ── Platform + Type chips ─────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 px-4 pt-2">
+      <div className="flex items-center gap-2 px-6 pt-3">
         <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
             PLATFORM_COLORS[account.platform] ?? PLATFORM_COLORS.OTHER
           }`}
         >
           {platformLabel}
         </span>
-        <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+        <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-medium text-slate-400">
           {typeLabel}
         </span>
       </div>
 
       {/* ── Info rows ─────────────────────────────────────────────────── */}
-      <div className="mt-3 flex flex-col gap-1.5 px-4 text-xs">
+      <div className="mt-4 flex flex-col px-6 text-xs">
         <InfoRow label="Agency" value={account.agencyName} />
         <InfoRow label="Account GEO" value={account.accountCountry} />
         <InfoRow label="Traffic GEO" value={account.trafficCountry} />
-        <InfoRow label="Currency" value={currencyLabel} />
+        <InfoRow label="Currency" value={currencyLabel} last />
       </div>
 
       {/* ── Footer: created date ──────────────────────────────────────── */}
-      <div className="mt-auto border-t border-white/[0.06] px-4 py-2.5 mt-3">
-        <span className="text-[11px] text-slate-500">
+      <div className="mt-auto border-t border-white/[0.06] px-6 py-3 mt-4">
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+          <Calendar className="h-3 w-3" />
           Created {formatDate(account.createdAt)}
         </span>
       </div>
@@ -187,12 +190,12 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
 
 // ─── Small helper ────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value }: { label: string; value: string | null }) {
+function InfoRow({ label, value, last }: { label: string; value: string | null; last?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className={`flex items-center justify-between py-2 ${last ? "" : "border-b border-white/[0.06]"}`}>
       <span className="text-slate-500">{label}</span>
       <span className="font-medium text-slate-200">
-        {value ?? <span className="text-slate-600">—</span>}
+        {value ?? <span className="text-slate-600">&mdash;</span>}
       </span>
     </div>
   );

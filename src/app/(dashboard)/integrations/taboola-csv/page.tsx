@@ -83,12 +83,14 @@ export default async function TaboolaCsvPage() {
           value={dateRange}
           icon={Calendar}
           iconClassName="text-emerald-400"
+          valueClassName="text-base font-semibold"
         />
         <StatCard
           label="Last Import"
           value={formatDateTime(stats.lastImportAt)}
           icon={FileUp}
           iconClassName="text-amber-400"
+          valueClassName="text-base font-semibold"
         />
       </div>
 

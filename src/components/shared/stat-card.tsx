@@ -6,6 +6,8 @@ type StatCardProps = {
   description?:   string;
   icon:           LucideIcon;
   iconClassName?: string;
+  /** Override the default text size/weight of the value. */
+  valueClassName?: string;
   /** Optional content rendered below the value — e.g. a status Badge. */
   sub?:           React.ReactNode;
 };
@@ -16,6 +18,7 @@ export function StatCard({
   description,
   icon: Icon,
   iconClassName = "text-slate-400",
+  valueClassName = "text-2xl font-bold",
   sub,
 }: StatCardProps) {
   return (
@@ -26,7 +29,7 @@ export function StatCard({
       </div>
 
       <div className="mt-2">
-        <span className="text-2xl font-bold text-white">{value}</span>
+        <span className={`text-white ${valueClassName}`}>{value}</span>
       </div>
 
       {sub && <div className="mt-1">{sub}</div>}

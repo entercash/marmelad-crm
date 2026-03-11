@@ -45,7 +45,7 @@ export type AccountRow = {
   cryptoPaymentPercent:  number | null;
   /** Total deposited via top-ups (USD). */
   totalTopUp:     number;
-  /** Remaining balance = totalTopUp - totalSpentUsd. */
+  /** Remaining balance = totalTopUp - rawSpentUsd (without commissions). */
   remaining:      number;
   createdAt:      Date;
   updatedAt:      Date;
@@ -173,7 +173,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
         cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
         totalTopUp,
-        remaining:      totalTopUp - totalSpentUsd,
+        remaining:      totalTopUp - rawSpentUsd,
         createdAt:      r.createdAt,
         updatedAt:      r.updatedAt,
       };

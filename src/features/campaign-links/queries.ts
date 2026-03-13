@@ -108,30 +108,38 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
 /** Aggregate Taboola stats by campaignExternalId. */
 async function getTaboolaStatsByCampaign(
   externalIds: string[],
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<
-  Map<string, { clicks: number; spend: number; impressions: number; minDay: Date; maxDay: Date }>
+  Map<string, { clicks: number; spend: number; impressions: number }>
 > {
   if (externalIds.length === 0) return new Map();
 
+  const where: Prisma.TaboolaCsvRowWhereInput = {
+    campaignExternalId: { in: externalIds },
+  };
+  if (dateFrom && dateTo) {
+    where.day = {
+      gte: new Date(`${dateFrom}T00:00:00.000Z`),
+      lte: new Date(`${dateTo}T00:00:00.000Z`),
+    };
+  }
+
   const rows = await prisma.taboolaCsvRow.groupBy({
     by: ["campaignExternalId"],
-    where: { campaignExternalId: { in: externalIds } },
+    where,
     _sum: { clicks: true, spentUsd: true, impressions: true },
-    _min: { day: true },
-    _max: { day: true },
   });
 
   const map = new Map<
     string,
-    { clicks: number; spend: number; impressions: number; minDay: Date; maxDay: Date }
+    { clicks: number; spend: number; impressions: number }
   >();
   for (const r of rows) {
     map.set(r.campaignExternalId, {
       clicks: r._sum.clicks ?? 0,
       spend: Number(r._sum.spentUsd ?? 0),
       impressions: r._sum.impressions ?? 0,
-      minDay: r._min.day!,
-      maxDay: r._max.day!,
     });
   }
   return map;
@@ -234,7 +242,10 @@ async function getCommissionMultipliers(
 // ─── Combined stats (main page query) ───────────────────────────────────────
 
 /** Get all campaign links with merged Taboola + Keitaro stats. */
-export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
+export async function getCampaignLinkStats(
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<CampaignStatsRow[]> {
   const links = await getCampaignLinks();
   if (links.length === 0) return [];
 
@@ -242,23 +253,21 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
   const taboolaIdSet = new Set(links.map((l) => l.taboolaCampaignExternalId));
   const taboolaIds = Array.from(taboolaIdSet);
   const [taboolaStats, commMultipliers] = await Promise.all([
-    getTaboolaStatsByCampaign(taboolaIds),
+    getTaboolaStatsByCampaign(taboolaIds, dateFrom, dateTo),
     getCommissionMultipliers(taboolaIds),
   ]);
 
-  // Keitaro stats — use wide date range to capture all conversions
+  // Keitaro stats
   const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
   const keitaroIds = Array.from(keitaroIdSet);
-  const from = "2024-01-01";
-  const to = todayCrm();
+  const from = dateFrom ?? "2024-01-01";
+  const to = dateTo ?? todayCrm();
   let keitaroStats: Map<
     number,
     { clicks: number; leads: number; sales: number; revenue: number }
   > | null = null;
   if (keitaroIds.length > 0) {
-    console.log("[getCampaignLinkStats] Keitaro IDs:", keitaroIds, "dateRange:", from, "→", to);
     keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, from, to);
-    console.log("[getCampaignLinkStats] keitaroStats:", keitaroStats ? `${keitaroStats.size} entries` : "null");
   }
 
   // Merge

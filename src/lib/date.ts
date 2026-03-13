@@ -87,6 +87,98 @@ export function isValidDateStr(str: unknown): str is string {
   return /^\d{4}-\d{2}-\d{2}$/.test(str) && !isNaN(Date.parse(str));
 }
 
+// ─── Date Period Filter ─────────────────────────────────────────────────────
+
+export type DatePeriod =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "all";
+
+export type DateRange = { from: string; to: string } | null;
+
+export const DATE_PERIOD_LABELS: Record<DatePeriod, string> = {
+  all:        "All Time",
+  today:      "Today",
+  yesterday:  "Yesterday",
+  this_week:  "This Week",
+  last_week:  "Last Week",
+  this_month: "This Month",
+  last_month: "Last Month",
+};
+
+/** Resolve a preset period to concrete YYYY-MM-DD boundaries in CRM timezone. */
+export function resolveDatePeriod(period: DatePeriod): DateRange {
+  if (period === "all") return null;
+
+  const now = new Date();
+  const shifted = new Date(now.getTime() + CRM_UTC_OFFSET * 3_600_000);
+  const today = shifted.toISOString().slice(0, 10);
+  const todayDate = new Date(`${today}T00:00:00.000Z`);
+  const dow = todayDate.getUTCDay(); // 0=Sun
+
+  switch (period) {
+    case "today":
+      return { from: today, to: today };
+    case "yesterday": {
+      const d = new Date(todayDate);
+      d.setUTCDate(d.getUTCDate() - 1);
+      const yd = toApiDate(d);
+      return { from: yd, to: yd };
+    }
+    case "this_week": {
+      const monOff = dow === 0 ? 6 : dow - 1;
+      const mon = new Date(todayDate);
+      mon.setUTCDate(mon.getUTCDate() - monOff);
+      return { from: toApiDate(mon), to: today };
+    }
+    case "last_week": {
+      const monOff = dow === 0 ? 6 : dow - 1;
+      const thisMon = new Date(todayDate);
+      thisMon.setUTCDate(thisMon.getUTCDate() - monOff);
+      const lastMon = new Date(thisMon);
+      lastMon.setUTCDate(lastMon.getUTCDate() - 7);
+      const lastSun = new Date(thisMon);
+      lastSun.setUTCDate(lastSun.getUTCDate() - 1);
+      return { from: toApiDate(lastMon), to: toApiDate(lastSun) };
+    }
+    case "this_month": {
+      return { from: `${today.slice(0, 7)}-01`, to: today };
+    }
+    case "last_month": {
+      const firstThis = new Date(`${today.slice(0, 7)}-01T00:00:00.000Z`);
+      const lastPrev = new Date(firstThis);
+      lastPrev.setUTCDate(lastPrev.getUTCDate() - 1);
+      const firstPrev = `${toApiDate(lastPrev).slice(0, 7)}-01`;
+      return { from: firstPrev, to: toApiDate(lastPrev) };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Parse date filter from URL searchParams. */
+export function parseDateFilter(params: {
+  period?: string;
+  from?: string;
+  to?: string;
+}): DateRange {
+  const { period, from, to } = params;
+  if (period && period in DATE_PERIOD_LABELS) {
+    return resolveDatePeriod(period as DatePeriod);
+  }
+  if (from && isValidDateStr(from)) {
+    const validTo = to && isValidDateStr(to) ? to : todayCrm();
+    return { from, to: validTo };
+  }
+  return null;
+}
+
+// ─── Clamp ──────────────────────────────────────────────────────────────────
+
 /**
  * Clamp a date range to at most maxDays.
  * Used to break large syncs into API-safe windows.

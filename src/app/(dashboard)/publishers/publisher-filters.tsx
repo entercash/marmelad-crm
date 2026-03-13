@@ -12,11 +12,13 @@ export function PublisherFilters({ countries }: Props) {
   const currentCountry = searchParams.get("country") ?? "";
 
   function handleCountryChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
     if (e.target.value) {
       params.set("country", e.target.value);
+    } else {
+      params.delete("country");
     }
-    // Reset to page 1 when changing filter
     const qs = params.toString();
     router.push(`/publishers${qs ? `?${qs}` : ""}`);
   }
@@ -39,7 +41,13 @@ export function PublisherFilters({ countries }: Props) {
       {currentCountry && (
         <button
           type="button"
-          onClick={() => router.push("/publishers")}
+          onClick={() => {
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("country");
+            params.delete("page");
+            const qs = params.toString();
+            router.push(`/publishers${qs ? `?${qs}` : ""}`);
+          }}
           className="text-sm text-slate-400 hover:text-slate-200"
         >
           Clear

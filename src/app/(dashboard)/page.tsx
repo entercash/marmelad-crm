@@ -9,7 +9,9 @@ import {
 
 import { PageHeader }         from "@/components/shared/page-header";
 import { StatCard }           from "@/components/shared/stat-card";
+import { DateRangeFilter }    from "@/components/shared/date-range-filter";
 import { getDashboardSummary } from "@/features/dashboard/queries";
+import { parseDateFilter }     from "@/lib/date";
 
 export const metadata = { title: "Dashboard" };
 
@@ -39,11 +41,18 @@ function formatRoi(value: number | null): string {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default async function DashboardPage() {
+type SearchParams = { period?: string; from?: string; to?: string };
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const dateRange = parseDateFilter(searchParams);
   let spent = 0, received = 0, roi: number | null = null, result = 0;
 
   try {
-    const summary = await getDashboardSummary();
+    const summary = await getDashboardSummary(dateRange?.from, dateRange?.to);
     spent    = summary.spent;
     received = summary.received;
     roi      = summary.roi;
@@ -60,6 +69,8 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="Key business metrics at a glance"
       />
+
+      <DateRangeFilter basePath="/" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1. Spent */}

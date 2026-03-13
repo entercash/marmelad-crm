@@ -8,6 +8,7 @@ import { Badge }       from "@/components/ui/badge";
 import { Button }      from "@/components/ui/button";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
+import { DateRangeFilter }    from "@/components/shared/date-range-filter";
 import { CampaignLinkDialog } from "@/features/campaign-links/components/campaign-link-dialog";
 import { DeleteLinkButton }   from "@/features/campaign-links/components/delete-link-button";
 import {
@@ -17,6 +18,7 @@ import {
   type CampaignStatsRow,
 } from "@/features/campaign-links/queries";
 import { getDistinctCountries } from "@/features/publishers/queries";
+import { parseDateFilter }     from "@/lib/date";
 
 export const metadata = { title: "Campaigns" };
 
@@ -39,7 +41,14 @@ function fmtRoi(val: number | null): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default async function CampaignsPage() {
+type SearchParams = { period?: string; from?: string; to?: string };
+
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const dateRange = parseDateFilter(searchParams);
   let stats: CampaignStatsRow[] = [];
   let taboolaCampaigns: Awaited<ReturnType<typeof getDistinctTaboolaCampaigns>> = [];
   let keitaroCampaigns: Awaited<ReturnType<typeof getKeitaroCampaignOptions>> = [];
@@ -47,7 +56,7 @@ export default async function CampaignsPage() {
 
   try {
     [stats, taboolaCampaigns, keitaroCampaigns, countries] = await Promise.all([
-      getCampaignLinkStats(),
+      getCampaignLinkStats(dateRange?.from, dateRange?.to),
       getDistinctTaboolaCampaigns(),
       getKeitaroCampaignOptions(),
       getDistinctCountries(),
@@ -75,6 +84,8 @@ export default async function CampaignsPage() {
           />
         }
       />
+
+      <DateRangeFilter basePath="/campaigns" />
 
       {stats.length === 0 ? (
         <EmptyState

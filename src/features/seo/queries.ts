@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -77,8 +78,20 @@ export async function getSeoLeads(brandId: string): Promise<SeoLeadRow[]> {
 // ─── Dashboard aggregation ───────────────────────────────────────────────────
 
 /** Total SEO revenue across all leads. Used by getDashboardSummary(). */
-export async function getSeoTotalRevenue(): Promise<number> {
+export async function getSeoTotalRevenue(
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<number> {
+  const where: Prisma.SeoLeadWhereInput = {};
+  if (dateFrom && dateTo) {
+    where.date = {
+      gte: new Date(`${dateFrom}T00:00:00.000Z`),
+      lte: new Date(`${dateTo}T00:00:00.000Z`),
+    };
+  }
+
   const leads = await prisma.seoLead.findMany({
+    where,
     select: { quantity: true, rate: true },
   });
 

@@ -12,6 +12,7 @@
  * ExpenseSummary — aggregate totals computed from real DB data.
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 // ─── Row types ────────────────────────────────────────────────────────────────
@@ -125,14 +126,27 @@ export async function getCategories(): Promise<CategoryOption[]> {
 /**
  * Computes real aggregate totals from the database.
  */
-export async function getExpenseSummary(): Promise<ExpenseSummary> {
+export async function getExpenseSummary(
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<ExpenseSummary> {
+  const where: Prisma.ExpenseWhereInput = {};
+  if (dateFrom && dateTo) {
+    where.spendDate = {
+      gte: new Date(`${dateFrom}T00:00:00.000Z`),
+      lte: new Date(`${dateTo}T00:00:00.000Z`),
+    };
+  }
+
   const [agg, byCategory] = await Promise.all([
     prisma.expense.aggregate({
+      where,
       _count: { id: true },
       _sum:   { amount: true },
     }),
     prisma.expense.groupBy({
       by: ["categoryId"],
+      where,
       _count: { id: true },
       _sum:   { amount: true },
     }),

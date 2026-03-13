@@ -121,11 +121,17 @@ async function getCampaignLinksForPublishers(
 async function getSiteCampaignAssociations(
   siteExternalIds: string[],
   country?: string,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<Map<string, string[]>> {
   if (siteExternalIds.length === 0) return new Map();
 
   const countryClause = country
     ? Prisma.sql`AND "countryCode" = ${country}`
+    : Prisma.empty;
+
+  const dateClause = dateFrom && dateTo
+    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
     : Prisma.empty;
 
   const rows = await prisma.$queryRaw<
@@ -136,6 +142,7 @@ async function getSiteCampaignAssociations(
       FROM "taboola_csv_rows"
       WHERE "siteExternalId" IN (${Prisma.join(siteExternalIds)})
       ${countryClause}
+      ${dateClause}
     `,
   );
 
@@ -156,6 +163,8 @@ async function getSiteCampaignAssociations(
  */
 async function getKeitaroStatsByCampaignAndSite(
   keitaroExternalIds: number[],
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<Map<string, { leads: number; revenue: number }> | null> {
   if (keitaroExternalIds.length === 0) return new Map();
 
@@ -168,8 +177,8 @@ async function getKeitaroStatsByCampaignAndSite(
       apiKey: settings.apiKey,
     });
 
-    const from = "2024-01-01";
-    const to = todayCrm();
+    const from = dateFrom ?? "2024-01-01";
+    const to = dateTo ?? todayCrm();
 
     const report = await client.buildReport({
       range: { from, to, timezone: CRM_TIMEZONE },
@@ -214,12 +223,26 @@ export async function getPublisherStats(params: {
   country?: string;
   page?: number;
   perPage?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }): Promise<PublisherStatsResult> {
-  const { country, page = 1, perPage = 50 } = params;
+  const { country, page = 1, perPage = 50, dateFrom, dateTo } = params;
   const offset = (page - 1) * perPage;
 
-  const whereClause = country
-    ? Prisma.sql`WHERE t."countryCode" = ${country}`
+  const conditions: Prisma.Sql[] = [];
+  if (country) conditions.push(Prisma.sql`"countryCode" = ${country}`);
+  if (dateFrom && dateTo) conditions.push(Prisma.sql`"day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`);
+
+  const countWhereClause = conditions.length > 0
+    ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+    : Prisma.empty;
+
+  const tConditions: Prisma.Sql[] = [];
+  if (country) tConditions.push(Prisma.sql`t."countryCode" = ${country}`);
+  if (dateFrom && dateTo) tConditions.push(Prisma.sql`t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`);
+
+  const whereClause = tConditions.length > 0
+    ? Prisma.sql`WHERE ${Prisma.join(tConditions, " AND ")}`
     : Prisma.empty;
 
   // 1. Total count of distinct sites
@@ -227,7 +250,7 @@ export async function getPublisherStats(params: {
     Prisma.sql`
       SELECT COUNT(DISTINCT "siteExternalId") as total
       FROM "taboola_csv_rows"
-      ${country ? Prisma.sql`WHERE "countryCode" = ${country}` : Prisma.empty}
+      ${countWhereClause}
     `,
   );
   const total = Number(countRows[0]?.total ?? 0);
@@ -275,14 +298,14 @@ export async function getPublisherStats(params: {
 
   // 4. For sites on this page, find which campaigns they belong to
   const siteIds = rawRows.map((r) => r.siteExternalId);
-  const siteCampaigns = await getSiteCampaignAssociations(siteIds, country);
+  const siteCampaigns = await getSiteCampaignAssociations(siteIds, country, dateFrom, dateTo);
 
   // 5. Fetch Keitaro stats grouped by campaign_id + sub_id_1
   const keitaroExternalIds = Array.from(
     new Set(links.map((l) => l.keitaroCampaignExternalId)),
   );
   const keitaroStats =
-    await getKeitaroStatsByCampaignAndSite(keitaroExternalIds);
+    await getKeitaroStatsByCampaignAndSite(keitaroExternalIds, dateFrom, dateTo);
 
   // 6. Merge Taboola + Keitaro data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

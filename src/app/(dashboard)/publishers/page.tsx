@@ -7,12 +7,14 @@ import { PageHeader }  from "@/components/shared/page-header";
 import { EmptyState }  from "@/components/shared/empty-state";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
+import { DateRangeFilter }  from "@/components/shared/date-range-filter";
 import { PublisherFilters } from "./publisher-filters";
 import {
   getPublisherStats,
   getDistinctCountries,
   type PublisherStatsRow,
 } from "@/features/publishers/queries";
+import { parseDateFilter } from "@/lib/date";
 
 export const metadata = { title: "Publishers" };
 
@@ -35,13 +37,14 @@ function fmtPct(val: number | null): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-type SearchParams = { country?: string; page?: string };
+type SearchParams = { country?: string; page?: string; period?: string; from?: string; to?: string };
 
 export default async function PublishersPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
+  const dateRange = parseDateFilter(searchParams);
   const country = searchParams.country;
   const page = Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1);
   const perPage = 50;
@@ -54,7 +57,7 @@ export default async function PublishersPage({
 
   try {
     [stats, countries] = await Promise.all([
-      getPublisherStats({ country, page, perPage }),
+      getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to }),
       getDistinctCountries(),
     ]);
   } catch (err) {
@@ -68,6 +71,9 @@ export default async function PublishersPage({
   function buildPageUrl(p: number): string {
     const params = new URLSearchParams();
     if (country) params.set("country", country);
+    if (searchParams.period) params.set("period", searchParams.period);
+    if (searchParams.from) params.set("from", searchParams.from);
+    if (searchParams.to) params.set("to", searchParams.to);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return `/publishers${qs ? `?${qs}` : ""}`;
@@ -80,7 +86,10 @@ export default async function PublishersPage({
         description="Analyze site performance from Taboola CSV imports"
       />
 
-      <PublisherFilters countries={countries} />
+      <div className="flex flex-wrap items-center gap-4">
+        <DateRangeFilter basePath="/publishers" preserveParams={["country"]} />
+        <PublisherFilters countries={countries} />
+      </div>
 
       {!hasData ? (
         <EmptyState

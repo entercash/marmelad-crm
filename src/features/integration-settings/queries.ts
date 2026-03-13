@@ -113,6 +113,20 @@ export async function getKeitaroInstances(): Promise<KeitaroInstanceData[]> {
     }
   }
 
+  // Fallback: env vars as a "default" instance
+  if (instances.length === 0) {
+    const envUrl = process.env.KEITARO_API_URL || null;
+    const envKey = process.env.KEITARO_API_KEY || null;
+    if (envUrl || envKey) {
+      instances.push({
+        id: "env",
+        name: "Keitaro (env)",
+        apiUrl: envUrl,
+        apiKey: envKey,
+      });
+    }
+  }
+
   return instances;
 }
 
@@ -128,6 +142,16 @@ export async function getKeitaroInstanceSettings(
       name: "Keitaro (legacy)",
       apiUrl: settings["keitaro.apiUrl"] || null,
       apiKey: settings["keitaro.apiKey"] || null,
+    };
+  }
+
+  // Env-based instance — read from env vars
+  if (instanceId === "env") {
+    return {
+      id: "env",
+      name: "Keitaro (env)",
+      apiUrl: process.env.KEITARO_API_URL || null,
+      apiKey: process.env.KEITARO_API_KEY || null,
     };
   }
 

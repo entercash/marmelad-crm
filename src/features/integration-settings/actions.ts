@@ -110,7 +110,9 @@ export async function saveKeitaroInstance(
     await setSetting("keitaro.apiUrl", cleanUrl);
     await setSetting("keitaro.apiKey", apiKey);
   } else {
-    const prefix = `keitaro.${instanceId}`;
+    // "env" instance → migrate to new format with a real ID
+    const realId = instanceId === "env" ? crypto.randomUUID().slice(0, 8) : instanceId;
+    const prefix = `keitaro.${realId}`;
     await setSetting(`${prefix}.name`, name);
     await setSetting(`${prefix}.apiUrl`, cleanUrl);
     await setSetting(`${prefix}.apiKey`, apiKey);

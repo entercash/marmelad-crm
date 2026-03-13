@@ -890,12 +890,45 @@ model KeitaroCampaign {
   state      String           // "active", "disabled", "deleted"
   groupId    Int?
 
-  syncLogId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  syncLogId     String?
+  campaignLinks CampaignLink[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([state])
   @@map("keitaro_campaigns")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8f — CAMPAIGN LINKS (Taboola ↔ Keitaro mapping)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Payment model for a campaign mapping.
+/// CPL = Cost Per Lead (fixed rate per lead)
+/// CPA = Cost Per Action (only sales count, revenue from Keitaro)
+enum PaymentModel {
+  CPL
+  CPA
+}
+
+/// Maps a Taboola campaign (from CSV imports) to a Keitaro campaign.
+/// Stores payment model and optional CPL rate for revenue calculation.
+model CampaignLink {
+  id                        String       @id @default(cuid())
+  taboolaCampaignExternalId String       // from TaboolaCsvRow.campaignExternalId
+  taboolaCampaignName       String       // cached display name
+  keitaroCampaignId         String       // FK to KeitaroCampaign.id
+  paymentModel              PaymentModel
+  cplRate                   Decimal?     @db.Decimal(12, 4) // USD per lead (CPL only)
+
+  keitaroCampaign KeitaroCampaign @relation(fields: [keitaroCampaignId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taboolaCampaignExternalId, keitaroCampaignId])
+  @@index([keitaroCampaignId])
+  @@map("campaign_links")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

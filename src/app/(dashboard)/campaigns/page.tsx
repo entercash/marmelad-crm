@@ -1,123 +1,175 @@
 export const dynamic = "force-dynamic";
 
-import { Megaphone } from "lucide-react";
+import { Link2, Plus } from "lucide-react";
 
-import { PageHeader }              from "@/components/shared/page-header";
-import { EmptyState }              from "@/components/shared/empty-state";
-import { Badge }                   from "@/components/ui/badge";
-import { CampaignFilters }         from "./campaign-filters";
+import { PageHeader }  from "@/components/shared/page-header";
+import { EmptyState }  from "@/components/shared/empty-state";
+import { Badge }       from "@/components/ui/badge";
+import { Button }      from "@/components/ui/button";
+import { formatCurrency, formatPercent } from "@/lib/utils";
+
+import { CampaignLinkDialog } from "@/features/campaign-links/components/campaign-link-dialog";
+import { DeleteLinkButton }   from "@/features/campaign-links/components/delete-link-button";
 import {
-  getCampaigns,
-  getCampaignFilterOptions,
-  type CampaignRow,
-  type TrafficSourceOption,
-} from "@/features/campaigns/queries";
-import {
-  campaignStatusLabel,
-  campaignStatusVariant,
-  formatRelativeTime,
-} from "@/lib/format";
-import { formatCurrency } from "@/lib/utils";
+  getCampaignLinkStats,
+  getDistinctTaboolaCampaigns,
+  getKeitaroCampaignOptions,
+  type CampaignStatsRow,
+} from "@/features/campaign-links/queries";
 
 export const metadata = { title: "Campaigns" };
 
-type SearchParams = {
-  search?: string;
-  status?: string;
-  source?: string;
-};
+// ─── Formatters ─────────────────────────────────────────────────────────────
 
-export default async function CampaignsPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  let campaigns: CampaignRow[] = [];
-  let filterOptions: { trafficSources: TrafficSourceOption[] } = { trafficSources: [] };
+function fmtNum(val: number | null): string {
+  if (val === null) return "—";
+  return new Intl.NumberFormat("en-US").format(val);
+}
+
+function fmtUsd(val: number | null): string {
+  if (val === null) return "—";
+  return formatCurrency(val, "USD");
+}
+
+function fmtRoi(val: number | null): string {
+  if (val === null) return "—";
+  return formatPercent(val, 1);
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
+
+export default async function CampaignsPage() {
+  let stats: CampaignStatsRow[] = [];
+  let taboolaCampaigns: Awaited<ReturnType<typeof getDistinctTaboolaCampaigns>> = [];
+  let keitaroCampaigns: Awaited<ReturnType<typeof getKeitaroCampaignOptions>> = [];
 
   try {
-    [campaigns, filterOptions] = await Promise.all([
-      getCampaigns({
-        search:          searchParams.search,
-        status:          searchParams.status,
-        trafficSourceId: searchParams.source,
-      }),
-      getCampaignFilterOptions(),
+    [stats, taboolaCampaigns, keitaroCampaigns] = await Promise.all([
+      getCampaignLinkStats(),
+      getDistinctTaboolaCampaigns(),
+      getKeitaroCampaignOptions(),
     ]);
   } catch (err) {
     console.error("[CampaignsPage] Failed to fetch data:", err);
   }
 
-  const hasActiveFilter = !!(
-    searchParams.search ||
-    searchParams.status ||
-    searchParams.source
-  );
-
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         title="Campaigns"
-        description="Monitor status and budget across all synced campaigns"
+        description="Map Taboola campaigns to Keitaro and track performance"
+        action={
+          <CampaignLinkDialog
+            taboolaCampaigns={taboolaCampaigns}
+            keitaroCampaigns={keitaroCampaigns}
+            trigger={
+              <Button size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add Mapping
+              </Button>
+            }
+          />
+        }
       />
 
-      <CampaignFilters
-        trafficSources={filterOptions.trafficSources}
-        defaultSearch={searchParams.search}
-        defaultStatus={searchParams.status}
-        defaultSource={searchParams.source}
-      />
-
-      {campaigns.length === 0 ? (
+      {stats.length === 0 ? (
         <EmptyState
-          icon={Megaphone}
-          title={hasActiveFilter ? "No campaigns match your filters" : "No campaigns synced yet"}
-          description={hasActiveFilter ? "Try adjusting or clearing the filters above." : "Connect Taboola in Settings to sync your campaign data."}
+          icon={Link2}
+          title="No campaign mappings yet"
+          description="Map a Taboola campaign to a Keitaro campaign to start tracking P&L."
+          action={
+            <CampaignLinkDialog
+              taboolaCampaigns={taboolaCampaigns}
+              keitaroCampaigns={keitaroCampaigns}
+              trigger={
+                <Button size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add First Mapping
+                </Button>
+              }
+            />
+          }
         />
       ) : (
         <div className="dark-table-wrap">
           <div className="border-b border-white/[0.06] px-4 py-2.5">
             <span className="text-xs text-slate-400">
-              {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
-              {hasActiveFilter ? " (filtered)" : ""}
+              {stats.length} mapping{stats.length !== 1 ? "s" : ""}
             </span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/[0.06] text-left">
-                  <th className="px-4 py-3 font-medium text-slate-400">Campaign</th>
-                  <th className="px-4 py-3 font-medium text-slate-400">Source</th>
-                  <th className="px-4 py-3 font-medium text-slate-400">Ad Account</th>
-                  <th className="px-4 py-3 font-medium text-slate-400">Status</th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-400">Daily Budget</th>
-                  <th className="px-4 py-3 font-medium text-slate-400">Last Synced</th>
+                <tr className="border-b border-white/[0.06] text-left text-xs font-medium uppercase tracking-wider text-slate-400">
+                  <th className="px-4 py-3">Keitaro Campaign</th>
+                  <th className="px-4 py-3">Model</th>
+                  <th className="px-4 py-3 text-right">Clicks</th>
+                  <th className="px-4 py-3 text-right">Leads</th>
+                  <th className="px-4 py-3 text-right">Spend</th>
+                  <th className="px-4 py-3 text-right">CPL</th>
+                  <th className="px-4 py-3 text-right">Revenue</th>
+                  <th className="px-4 py-3 text-right">ROI</th>
+                  <th className="px-4 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.05]">
-                {campaigns.map((campaign) => (
-                  <tr key={campaign.id} className="transition-colors hover:bg-white/[0.03]">
-                    <td className="max-w-[280px] truncate px-4 py-3 font-medium text-white">
-                      {campaign.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400">{campaign.trafficSource.name}</td>
-                    <td className="px-4 py-3 text-slate-400">
-                      {campaign.adAccount?.name ?? <span className="text-slate-600">—</span>}
+                {stats.map((row) => (
+                  <tr
+                    key={row.linkId}
+                    className="transition-colors hover:bg-white/[0.03]"
+                  >
+                    <td className="max-w-[240px] truncate px-4 py-3 font-medium text-white">
+                      {row.keitaroCampaignName}
+                      <p className="truncate text-[11px] font-normal text-slate-500">
+                        {row.taboolaCampaignName}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={campaignStatusVariant(campaign.status)}>
-                        {campaignStatusLabel(campaign.status)}
+                      <Badge
+                        variant={
+                          row.paymentModel === "CPL" ? "secondary" : "outline"
+                        }
+                      >
+                        {row.paymentModel}
+                        {row.paymentModel === "CPL" && row.cplRate !== null
+                          ? ` $${row.cplRate}`
+                          : ""}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-300">
-                      {campaign.dailyBudget !== null ? (
-                        formatCurrency(campaign.dailyBudget, campaign.currency)
-                      ) : (
-                        <span className="text-slate-600">—</span>
-                      )}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {fmtNum(row.clicks)}
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{formatRelativeTime(campaign.lastSyncedAt)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {fmtNum(row.leads)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {fmtUsd(row.spend)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {fmtUsd(row.cpl)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {fmtUsd(row.revenue)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      <span
+                        className={
+                          row.roi !== null
+                            ? row.roi >= 0
+                              ? "text-emerald-400"
+                              : "text-red-400"
+                            : "text-slate-500"
+                        }
+                      >
+                        {fmtRoi(row.roi)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <DeleteLinkButton id={row.linkId} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

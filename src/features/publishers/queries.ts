@@ -248,16 +248,25 @@ async function getAdspectStatsBySite(
     const settings = await getAdspectSettings();
     if (!settings.apiKey) return null;
 
-    // 3. Check Redis cache
+    // 3. Check Redis cache (with 2s timeout — never block page render)
     const df = dateFrom ?? "2024-01-01";
     const dt = dateTo ?? todayCrm();
     const cacheKey = `adspect:funnel:${streamIds.sort().join(",")}:${df}:${dt}`;
 
-    const { redis } = await import("@/lib/redis");
-    const cached = await redis.get(cacheKey).catch(() => null);
-    if (cached) {
-      const entries: [string, AdspectSiteStats][] = JSON.parse(cached);
-      return new Map(entries);
+    let redisClient: Awaited<typeof import("@/lib/redis")>["redis"] | null = null;
+    try {
+      const { redis } = await import("@/lib/redis");
+      redisClient = redis;
+      const cached = await Promise.race([
+        redis.get(cacheKey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]);
+      if (cached) {
+        const entries: [string, AdspectSiteStats][] = JSON.parse(cached);
+        return new Map(entries);
+      }
+    } catch {
+      // Redis unavailable — skip cache, fetch from API
     }
 
     // 4. Call Adspect funnel API
@@ -278,8 +287,13 @@ async function getAdspectStatsBySite(
       });
     }
 
-    // 6. Store in Redis cache
-    await redis.set(cacheKey, JSON.stringify(Array.from(map.entries())), "EX", ADSPECT_CACHE_TTL).catch(() => {});
+    // 6. Store in Redis cache (fire-and-forget, with timeout)
+    if (redisClient) {
+      Promise.race([
+        redisClient.set(cacheKey, JSON.stringify(Array.from(map.entries())), "EX", ADSPECT_CACHE_TTL),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]).catch(() => {});
+    }
 
     return map;
   } catch (err) {

@@ -22,6 +22,10 @@ const nextConfig = {
     },
   },
 
+  // Packages that should NOT be bundled by webpack — loaded from node_modules at runtime.
+  // ioredis has native/dynamic requires that break standalone bundling.
+  serverExternalPackages: ["ioredis"],
+
   // ─── Security headers ───────────────────────────────────────────────────────
   async headers() {
     return [

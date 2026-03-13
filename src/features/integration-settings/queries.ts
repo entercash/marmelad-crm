@@ -10,6 +10,8 @@ function isSensitiveKey(key: string): boolean {
   if (/^keitaro\..+\.apiKey$/.test(key)) return true;
   // taboola.{accountId}.clientId / clientSecret
   if (/^taboola\..+\.(clientId|clientSecret)$/.test(key)) return true;
+  // adspect
+  if (key === "adspect.apiKey") return true;
   return false;
 }
 
@@ -210,6 +212,23 @@ export async function getTaboolaAccountSettings(
     clientSecret: settings[`${prefix}clientSecret`] || null,
     proxyUrl: settings[`${prefix}proxyUrl`] || null,
   };
+}
+
+// ─── Adspect-specific helpers ────────────────────────────────────────────────
+
+export interface AdspectSettingsData {
+  apiKey: string | null;
+}
+
+/** Load Adspect API key from DB. */
+export async function getAdspectSettings(): Promise<AdspectSettingsData> {
+  return { apiKey: await getSetting("adspect.apiKey") };
+}
+
+/** Check if Adspect is configured (API key present). */
+export async function isAdspectConfigured(): Promise<boolean> {
+  const { apiKey } = await getAdspectSettings();
+  return !!apiKey;
 }
 
 /** Get the set of accountIds that have Taboola credentials saved. */

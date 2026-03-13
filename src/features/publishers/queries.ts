@@ -31,6 +31,8 @@ export type PublisherStatsRow = {
   revenue: number | null;
   profit: number | null;
   roi: number | null;
+  botPercent: number | null;
+  clickDiscrepancy: number | null;
 };
 
 export type PublisherStatsResult = {
@@ -210,6 +212,66 @@ async function getKeitaroStatsByCampaignAndSite(
   }
 }
 
+// ─── Adspect stats by sub_id (site) ─────────────────────────────────────────
+
+/**
+ * Fetch Adspect funnel stats grouped by sub_id (= Taboola site_id).
+ * Returns Map<siteExternalId, { botPercent, adspectClicks }>.
+ * Returns null when Adspect is not configured or no streams are mapped.
+ */
+async function getAdspectStatsBySite(
+  siteExternalIds: string[],
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<Map<string, { botPercent: number; adspectClicks: number }> | null> {
+  if (siteExternalIds.length === 0) return new Map();
+
+  try {
+    // 1. Find CampaignLinks with adspectStreamId set
+    const linksWithStreams = await prisma.campaignLink.findMany({
+      where: { adspectStreamId: { not: null } },
+      select: { adspectStreamId: true },
+    });
+    const streamIds = Array.from(new Set(
+      linksWithStreams.map((l) => l.adspectStreamId!).filter(Boolean),
+    ));
+    if (streamIds.length === 0) return null;
+
+    // 2. Check if Adspect is configured
+    const { getAdspectSettings } = await import(
+      "@/features/integration-settings/queries"
+    );
+    const settings = await getAdspectSettings();
+    if (!settings.apiKey) return null;
+
+    // 3. Call Adspect funnel API
+    const { AdspectClient } = await import("@/integrations/adspect/client");
+    const client = new AdspectClient({ apiKey: settings.apiKey });
+    const rows = await client.getFunnelBySite({
+      streamIds,
+      dateFrom: dateFrom ?? "2024-01-01",
+      dateTo: dateTo ?? todayCrm(),
+    });
+
+    // 4. Build map keyed by sub_id (= site external ID)
+    const map = new Map<string, { botPercent: number; adspectClicks: number }>();
+    for (const row of rows) {
+      if (!row.sub_id) continue;
+      const totalClicks = row.clicks || 0;
+      const botClicks = (row.givt || 0) + (row.sivt || 0) + (row.mia || 0);
+      const botPct = totalClicks > 0 ? (botClicks / totalClicks) * 100 : 0;
+      map.set(row.sub_id, {
+        botPercent: Math.round(botPct * 10) / 10,
+        adspectClicks: totalClicks,
+      });
+    }
+    return map;
+  } catch (err) {
+    console.error("[getAdspectStatsBySite] Adspect API error:", err);
+    return null;
+  }
+}
+
 // ─── Main stats query ───────────────────────────────────────────────────────
 
 /**
@@ -225,13 +287,27 @@ export async function getPublisherStats(params: {
   perPage?: number;
   dateFrom?: string;
   dateTo?: string;
+  linkedOnly?: boolean;
 }): Promise<PublisherStatsResult> {
-  const { country, page = 1, perPage = 50, dateFrom, dateTo } = params;
+  const { country, page = 1, perPage = 50, dateFrom, dateTo, linkedOnly } = params;
   const offset = (page - 1) * perPage;
+
+  // If linkedOnly, get campaign external IDs from CampaignLink
+  let linkedCampaignIds: string[] | null = null;
+  if (linkedOnly) {
+    const links = await prisma.campaignLink.findMany({
+      select: { taboolaCampaignExternalId: true },
+    });
+    linkedCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
+    if (linkedCampaignIds.length === 0) {
+      return { rows: [], total: 0 };
+    }
+  }
 
   const conditions: Prisma.Sql[] = [];
   if (country) conditions.push(Prisma.sql`"countryCode" = ${country}`);
   if (dateFrom && dateTo) conditions.push(Prisma.sql`"day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`);
+  if (linkedCampaignIds) conditions.push(Prisma.sql`"campaignExternalId" IN (${Prisma.join(linkedCampaignIds)})`);
 
   const countWhereClause = conditions.length > 0
     ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
@@ -240,6 +316,7 @@ export async function getPublisherStats(params: {
   const tConditions: Prisma.Sql[] = [];
   if (country) tConditions.push(Prisma.sql`t."countryCode" = ${country}`);
   if (dateFrom && dateTo) tConditions.push(Prisma.sql`t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`);
+  if (linkedCampaignIds) tConditions.push(Prisma.sql`t."campaignExternalId" IN (${Prisma.join(linkedCampaignIds)})`);
 
   const whereClause = tConditions.length > 0
     ? Prisma.sql`WHERE ${Prisma.join(tConditions, " AND ")}`
@@ -307,7 +384,10 @@ export async function getPublisherStats(params: {
   const keitaroStats =
     await getKeitaroStatsByCampaignAndSite(keitaroExternalIds, dateFrom, dateTo);
 
-  // 6. Merge Taboola + Keitaro data
+  // 5b. Fetch Adspect stats by sub_id (site)
+  const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
+
+  // 6. Merge Taboola + Keitaro + Adspect data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
     const clicks = Number(r.clicks);
     const impressions = Number(r.impressions);
@@ -347,6 +427,11 @@ export async function getPublisherStats(params: {
         ? ((revenue - spend) / spend) * 100
         : null;
 
+    // Adspect data
+    const adspect = adspectStats?.get(r.siteExternalId) ?? null;
+    const botPercent = adspect?.botPercent ?? null;
+    const clickDiscrepancy = adspect ? clicks - adspect.adspectClicks : null;
+
     return {
       siteExternalId: r.siteExternalId,
       siteName: r.siteName,
@@ -360,6 +445,8 @@ export async function getPublisherStats(params: {
       revenue,
       profit,
       roi,
+      botPercent,
+      clickDiscrepancy,
     };
   });
 

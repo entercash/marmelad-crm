@@ -29,6 +29,11 @@ export const campaignLinkSchema = z
       .transform((v) => (v.trim() === "" ? null : v.trim().toUpperCase()))
       .nullable()
       .optional(),
+    adspectStreamId: z
+      .string()
+      .transform((v) => (v.trim() === "" ? null : v.trim()))
+      .nullable()
+      .optional(),
   })
   .refine(
     (data) => {

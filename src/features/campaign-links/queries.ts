@@ -29,7 +29,13 @@ export type CampaignLinkRow = {
   paymentModel: string;
   cplRate: number | null;
   country: string | null;
+  adspectStreamId: string | null;
   createdAt: Date;
+};
+
+export type AdspectStreamOption = {
+  id: string;
+  name: string;
 };
 
 export type CampaignStatsRow = {
@@ -100,6 +106,7 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
     paymentModel: l.paymentModel,
     cplRate: l.cplRate ? Number(l.cplRate) : null,
     country: l.country,
+    adspectStreamId: l.adspectStreamId,
     createdAt: l.createdAt,
   }));
 }
@@ -312,6 +319,28 @@ export async function getCampaignLinkDailyRevenue(
   }
 
   return result;
+}
+
+// ─── Adspect stream options ──────────────────────────────────────────────────
+
+/** Fetch Adspect streams for the CampaignLink form dropdown. */
+export async function getAdspectStreams(): Promise<AdspectStreamOption[]> {
+  try {
+    const { isAdspectConfigured, getAdspectSettings } = await import(
+      "@/features/integration-settings/queries"
+    );
+    if (!(await isAdspectConfigured())) return [];
+    const settings = await getAdspectSettings();
+    if (!settings.apiKey) return [];
+
+    const { AdspectClient } = await import("@/integrations/adspect/client");
+    const client = new AdspectClient({ apiKey: settings.apiKey });
+    const streams = await client.getStreams();
+    return streams.map((s) => ({ id: s.id, name: s.name }));
+  } catch (err) {
+    console.error("[getAdspectStreams] Adspect API error:", err);
+    return [];
+  }
 }
 
 // ─── Combined stats (main page query) ───────────────────────────────────────

@@ -8,9 +8,10 @@ import { KeitaroClient }   from "@/integrations/keitaro/client";
 import type { KeitaroConfig } from "@/integrations/keitaro/client";
 import { TaboolaClient }   from "@/integrations/taboola/client";
 import type { TaboolaConfig } from "@/integrations/taboola/client";
+import { AdspectClient }   from "@/integrations/adspect/client";
 import { prisma }          from "@/lib/prisma";
 import crypto from "crypto";
-import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings } from "./queries";
+import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings } from "./queries";
 
 // ─── Save Keitaro Settings ──────────────────────────────────────────────────
 
@@ -258,6 +259,62 @@ export async function disconnectTaboolaAccount(
   const prefix = `taboola.${accountId}.`;
   await prisma.integrationSetting.deleteMany({
     where: { key: { startsWith: prefix } },
+  });
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+// ─── Save Adspect Settings ──────────────────────────────────────────────────
+
+export async function saveAdspectSettings(
+  formData: FormData,
+): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const apiKey = (formData.get("apiKey") as string)?.trim();
+
+  if (!apiKey) {
+    return { success: false, error: "API Key is required" };
+  }
+
+  await setSetting("adspect.apiKey", apiKey);
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+// ─── Test Adspect Connection ────────────────────────────────────────────────
+
+export async function testAdspectConnection(): Promise<TestConnectionResult> {
+  const denied = await guardAdmin();
+  if (denied) return { success: false, error: "Admin access required" };
+
+  const settings = await getAdspectSettings();
+
+  if (!settings.apiKey) {
+    return { success: false, error: "Adspect is not configured. Save API Key first." };
+  }
+
+  try {
+    const client = new AdspectClient({ apiKey: settings.apiKey });
+    const streams = await client.getStreams();
+    return { success: true, campaignCount: streams.length };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { success: false, error: msg };
+  }
+}
+
+// ─── Disconnect Adspect ─────────────────────────────────────────────────────
+
+export async function disconnectAdspect(): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  await prisma.integrationSetting.deleteMany({
+    where: { key: { startsWith: "adspect." } },
   });
 
   revalidatePath("/settings");

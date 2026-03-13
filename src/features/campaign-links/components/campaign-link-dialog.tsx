@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 
 import { Dialog } from "@/components/ui/dialog";
 import { CampaignLinkForm } from "./campaign-link-form";
-import type { TaboolaCampaignOption, KeitaroCampaignOption } from "../queries";
+import type { TaboolaCampaignOption, KeitaroCampaignOption, AdspectStreamOption } from "../queries";
 import type { CountryOption } from "@/features/publishers/queries";
 
 interface Props {
   taboolaCampaigns: TaboolaCampaignOption[];
   keitaroCampaigns: KeitaroCampaignOption[];
   countries: CountryOption[];
+  adspectStreams: AdspectStreamOption[];
   trigger: React.ReactNode;
 }
 
@@ -19,6 +20,7 @@ export function CampaignLinkDialog({
   taboolaCampaigns,
   keitaroCampaigns,
   countries,
+  adspectStreams,
   trigger,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -44,6 +46,7 @@ export function CampaignLinkDialog({
           taboolaCampaigns={taboolaCampaigns}
           keitaroCampaigns={keitaroCampaigns}
           countries={countries}
+          adspectStreams={adspectStreams}
           onSuccess={handleSuccess}
           onCancel={() => setOpen(false)}
         />

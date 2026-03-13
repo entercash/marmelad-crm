@@ -7,17 +7,20 @@ import { TaboolaConnectionsList } from "./taboola-connections-list";
 import type { TaboolaAccountOption } from "./taboola-connections-list";
 import { KeitaroConnectionsList } from "./keitaro-connections-list";
 import type { KeitaroInstanceOption } from "./keitaro-connections-list";
+import { AdspectConnection } from "./adspect-connection";
+import type { AdspectConnectionProps } from "./adspect-connection";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 interface SettingsTabsProps {
   taboolaAccounts: TaboolaAccountOption[];
   keitaroInstances: KeitaroInstanceOption[];
+  adspect: AdspectConnectionProps;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function SettingsTabs({ taboolaAccounts, keitaroInstances }: SettingsTabsProps) {
+export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect }: SettingsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "taboola";
@@ -33,6 +36,7 @@ export function SettingsTabs({ taboolaAccounts, keitaroInstances }: SettingsTabs
       <TabsList>
         <TabsTrigger value="taboola">Taboola</TabsTrigger>
         <TabsTrigger value="keitaro">Keitaro</TabsTrigger>
+        <TabsTrigger value="adspect">Adspect</TabsTrigger>
       </TabsList>
 
       <TabsContent value="taboola">
@@ -41,6 +45,10 @@ export function SettingsTabs({ taboolaAccounts, keitaroInstances }: SettingsTabs
 
       <TabsContent value="keitaro">
         <KeitaroConnectionsList instances={keitaroInstances} />
+      </TabsContent>
+
+      <TabsContent value="adspect">
+        <AdspectConnection {...adspect} />
       </TabsContent>
     </Tabs>
   );

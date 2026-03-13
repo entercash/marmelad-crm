@@ -15,7 +15,9 @@ import {
   getCampaignLinkStats,
   getDistinctTaboolaCampaigns,
   getKeitaroCampaignOptions,
+  getAdspectStreams,
   type CampaignStatsRow,
+  type AdspectStreamOption,
 } from "@/features/campaign-links/queries";
 import { getDistinctCountries } from "@/features/publishers/queries";
 import { parseDateFilter }     from "@/lib/date";
@@ -53,13 +55,15 @@ export default async function CampaignsPage({
   let taboolaCampaigns: Awaited<ReturnType<typeof getDistinctTaboolaCampaigns>> = [];
   let keitaroCampaigns: Awaited<ReturnType<typeof getKeitaroCampaignOptions>> = [];
   let countries: Awaited<ReturnType<typeof getDistinctCountries>> = [];
+  let adspectStreams: AdspectStreamOption[] = [];
 
   try {
-    [stats, taboolaCampaigns, keitaroCampaigns, countries] = await Promise.all([
+    [stats, taboolaCampaigns, keitaroCampaigns, countries, adspectStreams] = await Promise.all([
       getCampaignLinkStats(dateRange?.from, dateRange?.to),
       getDistinctTaboolaCampaigns(),
       getKeitaroCampaignOptions(),
       getDistinctCountries(),
+      getAdspectStreams(),
     ]);
   } catch (err) {
     console.error("[CampaignsPage] Failed to fetch data:", err);
@@ -75,6 +79,7 @@ export default async function CampaignsPage({
             taboolaCampaigns={taboolaCampaigns}
             keitaroCampaigns={keitaroCampaigns}
             countries={countries}
+            adspectStreams={adspectStreams}
             trigger={
               <Button size="sm">
                 <Plus className="mr-1.5 h-4 w-4" />
@@ -97,6 +102,7 @@ export default async function CampaignsPage({
               taboolaCampaigns={taboolaCampaigns}
               keitaroCampaigns={keitaroCampaigns}
               countries={countries}
+              adspectStreams={adspectStreams}
               trigger={
                 <Button size="sm">
                   <Plus className="mr-1.5 h-4 w-4" />

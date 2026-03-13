@@ -8,6 +8,7 @@ import {
   getTaboolaAccountSettings,
   getTaboolaConnectedAccountIds,
   getKeitaroInstances,
+  getAdspectSettings,
 } from "@/features/integration-settings/queries";
 import { prisma } from "@/lib/prisma";
 
@@ -16,7 +17,7 @@ export const metadata = { title: "Settings" };
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default async function SettingsPage() {
-  const [taboolaAccounts, connectedIds, keitaroInstances] = await Promise.all([
+  const [taboolaAccounts, connectedIds, keitaroInstances, adspectSettings] = await Promise.all([
     prisma.account.findMany({
       where: { platform: "TABOOLA" },
       orderBy: { name: "asc" },
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
     }),
     getTaboolaConnectedAccountIds(),
     getKeitaroInstances(),
+    getAdspectSettings(),
   ]);
 
   // Pre-fetch Taboola settings for connected accounts
@@ -62,6 +64,10 @@ export default async function SettingsPage() {
       <SettingsTabs
         taboolaAccounts={taboolaOptions}
         keitaroInstances={keitaroOptions}
+        adspect={{
+          apiKey: adspectSettings.apiKey ?? "",
+          configured: !!adspectSettings.apiKey,
+        }}
       />
     </div>
   );

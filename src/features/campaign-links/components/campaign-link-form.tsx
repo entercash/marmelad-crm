@@ -7,7 +7,7 @@ import { Label }  from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { createCampaignLink } from "../actions";
 import { PAYMENT_MODELS, PAYMENT_MODEL_LABELS } from "../schema";
-import type { TaboolaCampaignOption, KeitaroCampaignOption } from "../queries";
+import type { TaboolaCampaignOption, KeitaroCampaignOption, AdspectStreamOption } from "../queries";
 import type { CountryOption } from "@/features/publishers/queries";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ interface Props {
   taboolaCampaigns: TaboolaCampaignOption[];
   keitaroCampaigns: KeitaroCampaignOption[];
   countries: CountryOption[];
+  adspectStreams: AdspectStreamOption[];
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -29,6 +30,7 @@ export function CampaignLinkForm({
   taboolaCampaigns,
   keitaroCampaigns,
   countries,
+  adspectStreams,
   onSuccess,
   onCancel,
 }: Props) {
@@ -167,6 +169,28 @@ export function CampaignLinkForm({
           <p className="text-xs text-red-400">{fe("country")}</p>
         )}
       </div>
+
+      {/* Adspect Stream */}
+      {adspectStreams.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Adspect Stream</Label>
+          <select
+            name="adspectStreamId"
+            className={selectClass}
+            defaultValue=""
+          >
+            <option value="">— Not set —</option>
+            {adspectStreams.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          {fe("adspectStreamId") && (
+            <p className="text-xs text-red-400">{fe("adspectStreamId")}</p>
+          )}
+        </div>
+      )}
 
       {/* CPL rate */}
       {paymentModel === "CPL" && (

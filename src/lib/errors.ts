@@ -40,6 +40,12 @@ export class KeitaroError extends IntegrationError {
   }
 }
 
+export class AdspectError extends IntegrationError {
+  constructor(message: string, statusCode?: number, cause?: unknown) {
+    super("adspect", message, statusCode, cause);
+  }
+}
+
 // ─── Infrastructure errors ───────────────────────────────────────────────────
 
 /** A required environment variable is missing or empty */

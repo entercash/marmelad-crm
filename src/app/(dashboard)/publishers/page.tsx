@@ -37,7 +37,7 @@ function fmtPct(val: number | null): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-type SearchParams = { country?: string; page?: string; period?: string; from?: string; to?: string };
+type SearchParams = { country?: string; page?: string; period?: string; from?: string; to?: string; linked?: string };
 
 export default async function PublishersPage({
   searchParams,
@@ -46,6 +46,7 @@ export default async function PublishersPage({
 }) {
   const dateRange = parseDateFilter(searchParams);
   const country = searchParams.country;
+  const linkedOnly = searchParams.linked === "1";
   const page = Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1);
   const perPage = 50;
 
@@ -57,7 +58,7 @@ export default async function PublishersPage({
 
   try {
     [stats, countries] = await Promise.all([
-      getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to }),
+      getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to, linkedOnly }),
       getDistinctCountries(),
     ]);
   } catch (err) {
@@ -74,6 +75,7 @@ export default async function PublishersPage({
     if (searchParams.period) params.set("period", searchParams.period);
     if (searchParams.from) params.set("from", searchParams.from);
     if (searchParams.to) params.set("to", searchParams.to);
+    if (linkedOnly) params.set("linked", "1");
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return `/publishers${qs ? `?${qs}` : ""}`;
@@ -125,6 +127,8 @@ export default async function PublishersPage({
                 <tr className="border-b border-white/[0.06] text-left text-xs font-medium uppercase tracking-wider text-slate-400">
                   <th className="px-4 py-3">Site</th>
                   <th className="px-4 py-3 text-right">Clicks</th>
+                  <th className="px-4 py-3 text-right">Bot%</th>
+                  <th className="px-4 py-3 text-right">ΔClicks</th>
                   <th className="px-4 py-3 text-right">Impressions</th>
                   <th className="px-4 py-3 text-right">Spend</th>
                   <th className="px-4 py-3 text-right">CPC</th>
@@ -151,6 +155,24 @@ export default async function PublishersPage({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtNum(row.clicks)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      <span
+                        className={
+                          row.botPercent === null
+                            ? "text-slate-500"
+                            : row.botPercent <= 20
+                              ? "text-emerald-400"
+                              : row.botPercent <= 50
+                                ? "text-amber-400"
+                                : "text-red-400"
+                        }
+                      >
+                        {row.botPercent !== null ? `${row.botPercent.toFixed(1)}%` : "—"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
+                      {row.clickDiscrepancy !== null ? fmtNum(row.clickDiscrepancy) : "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtNum(row.impressions)}

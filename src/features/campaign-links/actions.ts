@@ -47,6 +47,7 @@ export async function createCampaignLink(
     paymentModel,
     cplRate,
     country,
+    adspectStreamId,
   } = parsed.data;
 
   try {
@@ -61,6 +62,7 @@ export async function createCampaignLink(
             ? new Prisma.Decimal(cplRate)
             : null,
         country: country ?? null,
+        adspectStreamId: adspectStreamId ?? null,
       },
     });
 

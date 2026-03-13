@@ -9,7 +9,8 @@ import type { KeitaroConfig } from "@/integrations/keitaro/client";
 import { TaboolaClient }   from "@/integrations/taboola/client";
 import type { TaboolaConfig } from "@/integrations/taboola/client";
 import { prisma }          from "@/lib/prisma";
-import { setSetting, getKeitaroSettings, getTaboolaAccountSettings } from "./queries";
+import crypto from "crypto";
+import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings } from "./queries";
 
 // ─── Save Keitaro Settings ──────────────────────────────────────────────────
 
@@ -77,6 +78,81 @@ export async function testKeitaroConnection(): Promise<TestConnectionResult> {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return { success: false, error: msg };
   }
+}
+
+// ─── Keitaro Instance CRUD ───────────────────────────────────────────────────
+
+export async function saveKeitaroInstance(
+  formData: FormData,
+): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const instanceId = (formData.get("instanceId") as string)?.trim() || crypto.randomUUID().slice(0, 8);
+  const name = (formData.get("name") as string)?.trim();
+  const apiUrl = (formData.get("apiUrl") as string)?.trim();
+  const apiKey = (formData.get("apiKey") as string)?.trim();
+
+  if (!name) return { success: false, error: "Name is required" };
+  if (!apiUrl) return { success: false, error: "API URL is required" };
+  if (!apiKey) return { success: false, error: "API Key is required" };
+
+  try {
+    new URL(apiUrl);
+  } catch {
+    return { success: false, error: "Invalid URL format" };
+  }
+
+  const cleanUrl = apiUrl.replace(/\/+$/, "");
+  const prefix = `keitaro.${instanceId}`;
+  await setSetting(`${prefix}.name`, name);
+  await setSetting(`${prefix}.apiUrl`, cleanUrl);
+  await setSetting(`${prefix}.apiKey`, apiKey);
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+export async function testKeitaroInstance(
+  instanceId: string,
+): Promise<TestConnectionResult> {
+  const denied = await guardAdmin();
+  if (denied) return { success: false, error: "Admin access required" };
+
+  const settings = await getKeitaroInstanceSettings(instanceId);
+
+  if (!settings.apiUrl || !settings.apiKey) {
+    return { success: false, error: "Keitaro instance is not configured. Save settings first." };
+  }
+
+  const config: KeitaroConfig = {
+    apiUrl: settings.apiUrl,
+    apiKey: settings.apiKey,
+  };
+
+  try {
+    const client = new KeitaroClient(config);
+    const campaigns = await client.getCampaigns();
+    return { success: true, campaignCount: campaigns.length };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { success: false, error: msg };
+  }
+}
+
+export async function deleteKeitaroInstance(
+  instanceId: string,
+): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const prefix = `keitaro.${instanceId}.`;
+  await prisma.integrationSetting.deleteMany({
+    where: { key: { startsWith: prefix } },
+  });
+
+  revalidatePath("/settings");
+  return { success: true };
 }
 
 // ─── Save Taboola Account Settings ──────────────────────────────────────────

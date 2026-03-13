@@ -6,6 +6,8 @@ import { encrypt, safeDecrypt } from "@/lib/crypto";
 /** Check if a key holds sensitive data and should be encrypted at rest. */
 function isSensitiveKey(key: string): boolean {
   if (key === "keitaro.apiKey") return true;
+  // keitaro.{instanceId}.apiKey
+  if (/^keitaro\..+\.apiKey$/.test(key)) return true;
   // taboola.{accountId}.clientId / clientSecret
   if (/^taboola\..+\.(clientId|clientSecret)$/.test(key)) return true;
   return false;
@@ -53,13 +55,72 @@ export interface KeitaroSettingsData {
   apiKey: string | null;
 }
 
+export interface KeitaroInstanceData {
+  id: string;
+  name: string;
+  apiUrl: string | null;
+  apiKey: string | null;
+}
+
+/**
+ * Get all Keitaro instances stored in the new multi-instance format.
+ * Keys: keitaro.{instanceId}.name / apiUrl / apiKey
+ */
+export async function getKeitaroInstances(): Promise<KeitaroInstanceData[]> {
+  const rows = await prisma.integrationSetting.findMany({
+    where: { key: { startsWith: "keitaro." } },
+  });
+
+  // Group by instanceId (keys with 3 segments: keitaro.{id}.{field})
+  const instanceMap = new Map<string, Record<string, string>>();
+  for (const row of rows) {
+    const parts = row.key.split(".");
+    if (parts.length !== 3) continue; // skip legacy keys like "keitaro.apiUrl"
+    const [, instanceId, field] = parts;
+    const data = instanceMap.get(instanceId) ?? {};
+    data[field] = isSensitiveKey(row.key) ? (safeDecrypt(row.value) ?? row.value) : row.value;
+    instanceMap.set(instanceId, data);
+  }
+
+  const instances: KeitaroInstanceData[] = [];
+  instanceMap.forEach((data, id) => {
+    instances.push({
+      id,
+      name: data.name || "",
+      apiUrl: data.apiUrl || null,
+      apiKey: data.apiKey || null,
+    });
+  });
+  return instances;
+}
+
+/** Load a single Keitaro instance's settings. */
+export async function getKeitaroInstanceSettings(
+  instanceId: string,
+): Promise<KeitaroInstanceData> {
+  const prefix = `keitaro.${instanceId}.`;
+  const settings = await getSettings(prefix);
+  return {
+    id: instanceId,
+    name: settings[`${prefix}name`] || "",
+    apiUrl: settings[`${prefix}apiUrl`] || null,
+    apiKey: settings[`${prefix}apiKey`] || null,
+  };
+}
+
 /**
  * Load Keitaro config from DB, falling back to env vars.
- * Returns null fields if nothing is configured.
+ * Backward-compatible: tries new multi-instance format first, then legacy keys.
  */
 export async function getKeitaroSettings(): Promise<KeitaroSettingsData> {
-  const settings = await getSettings("keitaro.");
+  // Try new multi-instance format first
+  const instances = await getKeitaroInstances();
+  if (instances.length > 0 && instances[0].apiUrl && instances[0].apiKey) {
+    return { apiUrl: instances[0].apiUrl, apiKey: instances[0].apiKey };
+  }
 
+  // Fallback: legacy single-instance keys
+  const settings = await getSettings("keitaro.");
   return {
     apiUrl: settings["keitaro.apiUrl"] || process.env.KEITARO_API_URL || null,
     apiKey: settings["keitaro.apiKey"] || process.env.KEITARO_API_KEY || null,

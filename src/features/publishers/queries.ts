@@ -67,12 +67,20 @@ export async function getDistinctCountries(): Promise<CountryOption[]> {
   return rows.map((r) => ({ code: r.countryCode, name: r.country }));
 }
 
-// ─── Keitaro sub_id stats ───────────────────────────────────────────────────
+// ─── Keitaro sub_id_1 stats ─────────────────────────────────────────────────
 
-/** Fetch Keitaro stats grouped by sub_id for publisher matching. Returns null on error. */
-async function getKeitaroStatsBySubId(): Promise<
-  Map<string, { leads: number; revenue: number }> | null
-> {
+/**
+ * Fetch Keitaro stats grouped by sub_id_1 (= Taboola site ID) for publisher matching.
+ *
+ * When a country filter is active, groups by sub_id_1 + country so we can
+ * filter Keitaro leads to the same GEO as the Taboola CSV data.
+ * Without a country filter, groups by sub_id_1 only (already aggregated).
+ *
+ * Returns null on error or missing API credentials.
+ */
+async function getKeitaroStatsBySubId(
+  countryFilter?: string,
+): Promise<Map<string, { leads: number; revenue: number }> | null> {
   try {
     const settings = await getKeitaroSettings();
     if (!settings.apiUrl || !settings.apiKey) return null;
@@ -85,9 +93,15 @@ async function getKeitaroStatsBySubId(): Promise<
     const from = "2024-01-01";
     const to = new Date().toISOString().slice(0, 10);
 
+    // When filtering by country, include country in grouping to match GEOs.
+    // Without filter, group by sub_id_1 only (fewer rows, fits in limit).
+    const grouping: ("sub_id_1" | "country")[] = countryFilter
+      ? ["sub_id_1", "country"]
+      : ["sub_id_1"];
+
     const report = await client.buildReport({
       range: { from, to, timezone: "UTC" },
-      grouping: ["sub_id"],
+      grouping,
       metrics: ["conversions", "revenue"],
       limit: 10_000,
       offset: 0,
@@ -95,12 +109,26 @@ async function getKeitaroStatsBySubId(): Promise<
 
     const map = new Map<string, { leads: number; revenue: number }>();
     for (const row of report.rows) {
-      const subId = String(row.sub_id ?? "").trim();
+      const subId = String(row.sub_id_1 ?? "").trim();
       if (!subId) continue;
-      map.set(subId, {
-        leads: Number(row.conversions ?? 0),
-        revenue: Number(row.revenue ?? 0),
-      });
+
+      // When country filter is active, skip rows for other countries
+      if (countryFilter) {
+        const rowCountry = String(row.country ?? "").trim();
+        if (rowCountry !== countryFilter) continue;
+      }
+
+      const leads = Number(row.conversions ?? 0);
+      const revenue = Number(row.revenue ?? 0);
+
+      // Accumulate in case multiple rows map to the same sub_id_1
+      const existing = map.get(subId);
+      if (existing) {
+        existing.leads += leads;
+        existing.revenue += revenue;
+      } else {
+        map.set(subId, { leads, revenue });
+      }
     }
     return map;
   } catch (err) {
@@ -157,8 +185,8 @@ export async function getPublisherStats(params: {
     `,
   );
 
-  // Keitaro leads by sub_id (fetched once, cached for this request)
-  const keitaroStats = await getKeitaroStatsBySubId();
+  // Keitaro leads by sub_id_1 (= Taboola site ID), filtered by country if active
+  const keitaroStats = await getKeitaroStatsBySubId(country);
 
   // Merge Taboola + Keitaro data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
@@ -168,11 +196,8 @@ export async function getPublisherStats(params: {
     const cpc = clicks > 0 ? spend / clicks : null;
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : null;
 
-    // Match Keitaro data by siteExternalId or siteName
-    const ks =
-      keitaroStats?.get(r.siteExternalId) ??
-      keitaroStats?.get(r.siteName) ??
-      null;
+    // Match Keitaro sub_id_1 with Taboola siteExternalId
+    const ks = keitaroStats?.get(r.siteExternalId) ?? null;
 
     const leads = ks?.leads ?? null;
     const revenue = ks?.revenue ?? null;

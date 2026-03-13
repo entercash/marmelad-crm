@@ -73,6 +73,11 @@ export interface KeitaroReportRow {
   country?: string;        // ISO 3166-1 alpha-2, or "" for unknown
   day?: string;            // YYYY-MM-DD (when "day" is in grouping)
 
+  // Sub-ID tracking parameters (when in grouping)
+  sub_id?: string;
+  sub_id_1?: string;
+  sub_id_2?: string;
+
   // Metrics — may be string | number depending on Keitaro version
   clicks?: number | string;
   conversions?: number | string; // all conversions (any status)

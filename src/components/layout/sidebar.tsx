@@ -19,6 +19,7 @@ import {
   Activity,
   LogOut,
   Users,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,12 @@ const navigation: NavGroup[] = [
       { label: "Taboola CSV", href: "/integrations/taboola-csv", icon: FileUp },
       { label: "Keitaro",     href: "/integrations/keitaro",     icon: Zap },
       { label: "SEO",         href: "/integrations/seo",         icon: Search },
+    ],
+  },
+  {
+    label: "Tools",
+    items: [
+      { label: "UTM Builder", href: "/tools/utm-builder", icon: Wrench },
     ],
   },
   {

@@ -7,6 +7,7 @@ import { Label }  from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { upsertSeoLead } from "../actions";
 import { PAYMENT_MODELS, PAYMENT_MODEL_LABELS } from "../schema";
+import { COUNTRIES } from "@/lib/countries";
 
 interface Props {
   brandId: string;
@@ -69,7 +70,14 @@ export function SeoLeadForm({ brandId, onSuccess, onCancel }: Props) {
         {/* Country */}
         <div className="flex flex-col gap-1.5">
           <Label>Country *</Label>
-          <Input name="country" required placeholder="GB" maxLength={2} className="uppercase" />
+          <select name="country" required className={selectClass} defaultValue="">
+            <option value="" disabled>Select country...</option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name} ({c.code})
+              </option>
+            ))}
+          </select>
           {fe("country") && <p className="text-xs text-red-400">{fe("country")}</p>}
         </div>
       </div>

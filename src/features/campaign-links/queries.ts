@@ -14,6 +14,7 @@ export type TaboolaCampaignOption = {
 export type KeitaroCampaignOption = {
   id: string;
   externalId: number;
+  alias: string;
   name: string;
   state: string;
 };
@@ -73,7 +74,7 @@ export async function getDistinctTaboolaCampaigns(): Promise<TaboolaCampaignOpti
 export async function getKeitaroCampaignOptions(): Promise<KeitaroCampaignOption[]> {
   const campaigns = await prisma.keitaroCampaign.findMany({
     orderBy: [{ state: "asc" }, { name: "asc" }],
-    select: { id: true, externalId: true, name: true, state: true },
+    select: { id: true, externalId: true, alias: true, name: true, state: true },
   });
   return campaigns;
 }

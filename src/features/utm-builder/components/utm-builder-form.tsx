@@ -6,6 +6,7 @@ import { Copy, Check, ExternalLink } from "lucide-react";
 type KeitaroCampaign = {
   id: string;
   externalId: number;
+  alias: string;
   name: string;
   state: string;
 };
@@ -147,8 +148,8 @@ export function UtmBuilderForm({ campaigns }: Props) {
               >
                 <option value="">Select campaign...</option>
                 {campaigns.map((c) => (
-                  <option key={c.id} value={c.externalId}>
-                    {c.name} (#{c.externalId}) {c.state !== "active" ? `[${c.state}]` : ""}
+                  <option key={c.id} value={c.alias}>
+                    {c.name} ({c.alias}) {c.state !== "active" ? `[${c.state}]` : ""}
                   </option>
                 ))}
               </select>

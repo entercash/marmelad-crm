@@ -336,7 +336,7 @@ export async function getAdspectStreams(): Promise<AdspectStreamOption[]> {
     const { AdspectClient } = await import("@/integrations/adspect/client");
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const streams = await client.getStreams();
-    return streams.map((s) => ({ id: s.id, name: s.name }));
+    return streams.map((s) => ({ id: s.stream_id, name: s.name }));
   } catch (err) {
     console.error("[getAdspectStreams] Adspect API error:", err);
     return [];

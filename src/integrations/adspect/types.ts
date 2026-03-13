@@ -14,9 +14,8 @@
 
 /** A single stream from GET /streams */
 export interface AdspectStream {
-  id: string;       // UUID
+  stream_id: string;  // UUID (API returns "stream_id", not "id")
   name: string;
-  tags: string[];
 }
 
 // ─── Funnel Report ──────────────────────────────────────────────────────────

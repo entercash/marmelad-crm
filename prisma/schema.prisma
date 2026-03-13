@@ -816,12 +816,12 @@ model TaboolaCsvRow {
   conversions      Decimal  @default(0) @db.Decimal(10, 2)
   conversionsValue Decimal  @default(0) @db.Decimal(12, 2)
   servedAds        Int      @default(0)
-  actualCpc        Decimal? @db.Decimal(10, 6)
-  actualCpa        Decimal? @db.Decimal(10, 6)
-  cpm              Decimal? @db.Decimal(10, 6)
-  ctr              Decimal? @db.Decimal(10, 6)
-  conversionRate   Decimal? @db.Decimal(10, 6)
-  roas             Decimal? @db.Decimal(10, 6)
+  actualCpc        Decimal? @db.Decimal(16, 6)
+  actualCpa        Decimal? @db.Decimal(16, 6)
+  cpm              Decimal? @db.Decimal(16, 6)
+  ctr              Decimal? @db.Decimal(16, 6)
+  conversionRate   Decimal? @db.Decimal(16, 6)
+  roas             Decimal? @db.Decimal(16, 6)
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   syncLogId String?

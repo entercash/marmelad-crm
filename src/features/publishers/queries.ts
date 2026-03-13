@@ -396,6 +396,11 @@ export async function getPublisherStats(params: {
 
   // 5b. Fetch Adspect stats by sub_id (site)
   const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
+  if (adspectStats) {
+    const sampleNames = rawRows.slice(0, 5).map((r) => ({ id: r.siteExternalId, name: r.siteName }));
+    console.log("[Adspect] Taboola sample sites:", JSON.stringify(sampleNames));
+    console.log("[Adspect] Adspect map keys:", Array.from(adspectStats.keys()));
+  }
 
   // 6. Merge Taboola + Keitaro + Adspect data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

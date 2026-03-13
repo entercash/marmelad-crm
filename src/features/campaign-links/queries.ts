@@ -166,7 +166,17 @@ async function getKeitaroStatsForCampaigns(
     console.log("[getKeitaroStats] Request:", JSON.stringify(requestBody));
 
     const report = await client.buildReport(requestBody);
-    console.log("[getKeitaroStats] Response rows:", JSON.stringify(report.rows));
+    console.log("[getKeitaroStats] FULL response:", JSON.stringify(report));
+
+    // Also try WITHOUT filter to see what campaigns exist
+    const debugReport = await client.buildReport({
+      range: { from: dateFrom, to: dateTo, timezone: "UTC" },
+      grouping: ["campaign_id"],
+      metrics: ["clicks", "conversions", "sales", "revenue"],
+      limit: 20,
+      offset: 0,
+    });
+    console.log("[getKeitaroStats] ALL campaigns (no filter):", JSON.stringify(debugReport.rows?.slice(0, 5) ?? debugReport));
 
     const map = new Map<number, { clicks: number; leads: number; sales: number; revenue: number }>();
     for (const row of report.rows) {

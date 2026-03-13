@@ -42,7 +42,7 @@ export function SyncButton() {
           {result.success ? (
             <>
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {result.total} campaigns ({result.created} new, {result.updated} updated)
+              {result.total} campaigns ({result.created} new, {result.updated} updated{result.deleted > 0 ? `, ${result.deleted} deleted` : ""})
             </>
           ) : (
             <>

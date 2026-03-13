@@ -11,7 +11,7 @@ import { getKeitaroSettings } from "@/features/integration-settings/queries";
 // ─── Result type ────────────────────────────────────────────────────────────
 
 export type SyncCampaignsResult =
-  | { success: true; total: number; created: number; updated: number }
+  | { success: true; total: number; created: number; updated: number; deleted: number }
   | { success: false; error: string };
 
 // ─── Main action ────────────────────────────────────────────────────────────
@@ -82,6 +82,23 @@ export async function syncKeitaroCampaigns(): Promise<SyncCampaignsResult> {
       }
     }
 
+    // Delete campaigns that no longer exist in Keitaro
+    const remoteIds = new Set(campaigns.map((c) => c.id));
+    const localCampaigns = await prisma.keitaroCampaign.findMany({
+      select: { externalId: true },
+    });
+    const toDelete = localCampaigns
+      .filter((lc) => !remoteIds.has(lc.externalId))
+      .map((lc) => lc.externalId);
+
+    let deleted = 0;
+    if (toDelete.length > 0) {
+      const result = await prisma.keitaroCampaign.deleteMany({
+        where: { externalId: { in: toDelete } },
+      });
+      deleted = result.count;
+    }
+
     // Complete SyncLog
     await prisma.syncLog.update({
       where: { id: syncLog.id },
@@ -96,7 +113,7 @@ export async function syncKeitaroCampaigns(): Promise<SyncCampaignsResult> {
 
     revalidatePath("/integrations/keitaro");
 
-    return { success: true, total: campaigns.length, created, updated };
+    return { success: true, total: campaigns.length, created, updated, deleted };
   } catch (err) {
     console.error("[syncKeitaroCampaigns] Failed:", err);
 

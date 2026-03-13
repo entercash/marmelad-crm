@@ -16,15 +16,13 @@ const nextConfig = {
   },
 
   // Allow large CSV file uploads via server actions (default is 1 MB).
+  // ioredis has native/dynamic requires that break standalone bundling.
   experimental: {
     serverActions: {
       bodySizeLimit: "50mb",
     },
+    serverComponentsExternalPackages: ["ioredis"],
   },
-
-  // Packages that should NOT be bundled by webpack — loaded from node_modules at runtime.
-  // ioredis has native/dynamic requires that break standalone bundling.
-  serverExternalPackages: ["ioredis"],
 
   // ─── Security headers ───────────────────────────────────────────────────────
   async headers() {

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { DATE_PERIOD_LABELS, type DatePeriod, todayCrm } from "@/lib/date";
+import { DATE_PERIOD_LABELS, DEFAULT_PERIOD, type DatePeriod, todayCrm } from "@/lib/date";
 
 type Props = {
   basePath: string;
@@ -45,11 +45,7 @@ export function DateRangeFilter({ basePath, preserveParams = [] }: Props) {
       return;
     }
     setShowCustom(false);
-    if (value === "" || value === "all") {
-      router.push(buildUrl({}));
-    } else {
-      router.push(buildUrl({ period: value }));
-    }
+    router.push(buildUrl({ period: value }));
   }
 
   function handleCustomApply() {
@@ -57,7 +53,7 @@ export function DateRangeFilter({ basePath, preserveParams = [] }: Props) {
     router.push(buildUrl({ from: customFrom, to: customTo || todayCrm() }));
   }
 
-  const selectValue = showCustom || isCustom ? "custom" : currentPeriod || "all";
+  const selectValue = showCustom || isCustom ? "custom" : currentPeriod || DEFAULT_PERIOD;
 
   return (
     <div className="flex flex-wrap items-center gap-3">

@@ -160,13 +160,17 @@ export function resolveDatePeriod(period: DatePeriod): DateRange {
   }
 }
 
-/** Parse date filter from URL searchParams. */
+/** Default period when no date filter is specified in URL. */
+export const DEFAULT_PERIOD: DatePeriod = "this_week";
+
+/** Parse date filter from URL searchParams. Defaults to this week. */
 export function parseDateFilter(params: {
   period?: string;
   from?: string;
   to?: string;
 }): DateRange {
   const { period, from, to } = params;
+  if (period === "all") return null;
   if (period && period in DATE_PERIOD_LABELS) {
     return resolveDatePeriod(period as DatePeriod);
   }
@@ -174,7 +178,7 @@ export function parseDateFilter(params: {
     const validTo = to && isValidDateStr(to) ? to : todayCrm();
     return { from, to: validTo };
   }
-  return null;
+  return resolveDatePeriod(DEFAULT_PERIOD);
 }
 
 // ─── Previous Period ─────────────────────────────────────────────────────────

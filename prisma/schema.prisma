@@ -969,3 +969,42 @@ model WhitePage {
   @@index([transferDate])
   @@map("white_pages")
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 10 — SEO BRANDS & LEADS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// An SEO brand — a website/project tracked for organic lead generation.
+model SeoBrand {
+  id   String @id @default(cuid())
+  name String // Brand display name
+  link String // URL of the SEO property
+
+  leads SeoLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("seo_brands")
+}
+
+/// A manually entered batch of SEO leads for a given brand + date + country.
+/// Upsert key: (seoBrandId, date, country) — re-entering the same combo overwrites.
+/// Revenue = quantity × rate.
+model SeoLead {
+  id           String       @id @default(cuid())
+  seoBrandId   String
+  quantity     Int          // Number of leads
+  country      String       // ISO alpha-2 country code
+  paymentModel PaymentModel // CPL or CPA (informational)
+  rate         Decimal      @db.Decimal(12, 4) // Payment per lead in USD
+  date         DateTime     @db.Date           // Date the leads were recorded
+
+  seoBrand SeoBrand @relation(fields: [seoBrandId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([seoBrandId, date, country])
+  @@map("seo_leads")
+}

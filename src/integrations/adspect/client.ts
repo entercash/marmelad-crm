@@ -70,7 +70,19 @@ export class AdspectClient {
       );
     }
 
-    return res.json() as Promise<T>;
+    const text = await res.text();
+    console.log("[Adspect] Raw response (first 500 chars):", text.slice(0, 500));
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      // Might be NDJSON (newline-delimited JSON) — parse line by line
+      const lines = text.trim().split("\n").filter(Boolean);
+      if (lines.length > 1) {
+        const parsed = lines.map((line) => JSON.parse(line));
+        return parsed as T;
+      }
+      throw new SyntaxError(`Invalid JSON from Adspect: ${text.slice(0, 200)}`);
+    }
   }
 
   // ── Streams ──────────────────────────────────────────────────────────────

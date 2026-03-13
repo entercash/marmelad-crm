@@ -216,18 +216,22 @@ async function getCommissionMultipliers(
     where: { externalId: { in: acctExtIds } },
     select: {
       externalId: true,
+      commissionPercent: true,
+      cryptoPaymentPercent: true,
       agency: {
         select: { commissionPercent: true, cryptoPaymentPercent: true },
       },
     },
   });
 
-  // 3. Build account → multiplier map
+  // 3. Build account → multiplier map (account override ?? agency)
   const acctMultMap = new Map<string, number>();
   for (const a of accounts) {
     if (!a.externalId) continue;
-    const commPct = a.agency?.commissionPercent ? Number(a.agency.commissionPercent) : 0;
-    const cryptoPct = a.agency?.cryptoPaymentPercent ? Number(a.agency.cryptoPaymentPercent) : 0;
+    const commPct = a.commissionPercent ? Number(a.commissionPercent)
+      : (a.agency?.commissionPercent ? Number(a.agency.commissionPercent) : 0);
+    const cryptoPct = a.cryptoPaymentPercent ? Number(a.cryptoPaymentPercent)
+      : (a.agency?.cryptoPaymentPercent ? Number(a.agency.cryptoPaymentPercent) : 0);
     acctMultMap.set(a.externalId, (1 + commPct / 100) * (1 + cryptoPct / 100));
   }
 

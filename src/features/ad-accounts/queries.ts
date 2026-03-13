@@ -17,6 +17,9 @@ import type { AccountStatus, AccountPlatform, AccountType } from "@prisma/client
 export type AgencyOption = {
   id:   string;
   name: string;
+  accountCostUsd:       number | null;
+  commissionPercent:    number | null;
+  cryptoPaymentPercent: number | null;
 };
 
 export type AccountRow = {
@@ -40,10 +43,16 @@ export type AccountRow = {
   totalCostNative: number;
   /** Total cost converted to USD (with commissions applied). */
   totalSpentUsd:   number;
-  /** Account purchase cost in USD (from agency). */
+  /** Account purchase cost in USD (effective: account override ?? agency). */
   accountCostUsd:        number | null;
+  /** Effective commission percent (account override ?? agency). */
   commissionPercent:     number | null;
+  /** Effective crypto payment percent (account override ?? agency). */
   cryptoPaymentPercent:  number | null;
+  /** Account-level overrides (null = inherited from agency). */
+  ownAccountCostUsd:        number | null;
+  ownCommissionPercent:     number | null;
+  ownCryptoPaymentPercent:  number | null;
   /** Total deposited via top-ups (USD). */
   totalTopUp:     number;
   /** Remaining balance = totalTopUp - rawSpentUsd (without commissions). */
@@ -68,6 +77,9 @@ export type AccountEditData = {
   trafficCountry: string | null;
   currency:       string;
   timezone:       string | null;
+  accountCostUsd:       number | null;
+  commissionPercent:    number | null;
+  cryptoPaymentPercent: number | null;
 };
 
 // ─── Stats type ─────────────────────────────────────────────────────────────
@@ -144,12 +156,15 @@ export async function getAccounts(): Promise<AccountRow[]> {
       const spend = r.externalId ? spendMap[r.externalId] : undefined;
       const rawSpentNative = spend?.native ?? 0;
       const rawSpentUsd    = spend?.usd ?? 0;
-      const commPct = r.agency?.commissionPercent
-        ? Number(r.agency.commissionPercent)
-        : 0;
-      const cryptoPct = r.agency?.cryptoPaymentPercent
-        ? Number(r.agency.cryptoPaymentPercent)
-        : 0;
+
+      // Override pattern: account field ?? agency field
+      const ownComm   = r.commissionPercent !== null ? Number(r.commissionPercent) : null;
+      const ownCrypto = r.cryptoPaymentPercent !== null ? Number(r.cryptoPaymentPercent) : null;
+      const ownCost   = r.accountCostUsd !== null ? Number(r.accountCostUsd) : null;
+
+      const commPct   = ownComm ?? (r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : 0);
+      const cryptoPct = ownCrypto ?? (r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : 0);
+
       const commMultiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
       const totalCostNative = rawSpentNative * commMultiplier;
       const totalSpentUsd   = rawSpentUsd * commMultiplier;
@@ -172,9 +187,12 @@ export async function getAccounts(): Promise<AccountRow[]> {
         rawSpentUsd,
         totalCostNative,
         totalSpentUsd,
-        accountCostUsd:        r.agency?.accountCostUsd ? Number(r.agency.accountCostUsd) : null,
-        commissionPercent:     r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : null,
-        cryptoPaymentPercent:  r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : null,
+        accountCostUsd:        ownCost ?? (r.agency?.accountCostUsd ? Number(r.agency.accountCostUsd) : null),
+        commissionPercent:     commPct > 0 ? commPct : null,
+        cryptoPaymentPercent:  cryptoPct > 0 ? cryptoPct : null,
+        ownAccountCostUsd:     ownCost,
+        ownCommissionPercent:  ownComm,
+        ownCryptoPaymentPercent: ownCrypto,
         totalTopUp,
         remaining:      totalTopUp - rawSpentUsd,
         createdAt:      r.createdAt,
@@ -187,12 +205,25 @@ export async function getAccounts(): Promise<AccountRow[]> {
   }
 }
 
-/** Minimal agency list for the dropdown in the account form. */
+/** Agency list for the dropdown in the account form (includes commission defaults). */
 export async function getAgenciesForSelect(): Promise<AgencyOption[]> {
-  return prisma.agency.findMany({
+  const rows = await prisma.agency.findMany({
     orderBy: { name: "asc" },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      accountCostUsd: true,
+      commissionPercent: true,
+      cryptoPaymentPercent: true,
+    },
   });
+  return rows.map((r) => ({
+    id:   r.id,
+    name: r.name,
+    accountCostUsd:       r.accountCostUsd !== null ? Number(r.accountCostUsd) : null,
+    commissionPercent:    r.commissionPercent !== null ? Number(r.commissionPercent) : null,
+    cryptoPaymentPercent: r.cryptoPaymentPercent !== null ? Number(r.cryptoPaymentPercent) : null,
+  }));
 }
 
 /** Aggregate status counts for summary stat cards. */

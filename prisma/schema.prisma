@@ -227,6 +227,11 @@ model Account {
   timezone       String?         // IANA timezone (e.g. "US/Eastern", "Europe/Moscow")
   totalSpentUsd  Decimal         @default(0) @db.Decimal(14, 2) // Denormalized spend total (populated by sync jobs)
 
+  // Per-account commission overrides (nullable = inherit from agency)
+  accountCostUsd       Decimal? @db.Decimal(12, 2)
+  commissionPercent    Decimal? @db.Decimal(8, 4)
+  cryptoPaymentPercent Decimal? @db.Decimal(8, 4)
+
   topUps AccountTopUp[]
 
   createdAt DateTime @default(now())

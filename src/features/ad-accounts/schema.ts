@@ -91,6 +91,25 @@ function optionalText(maxLen: number, label: string) {
     .transform((v): string | null => (v.trim() === "" ? null : v.trim()));
 }
 
+function optionalDecimal(max: number, label: string) {
+  return z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .refine((v) => !isNaN(parseFloat(v)) && isFinite(Number(v)), {
+          message: `${label} must be a number`,
+        })
+        .refine((v) => parseFloat(v) >= 0, {
+          message: `${label} cannot be negative`,
+        })
+        .refine((v) => parseFloat(v) <= max, {
+          message: `${label} must be ${max} or less`,
+        }),
+    ])
+    .transform((v): number | null => (v === "" ? null : parseFloat(v)));
+}
+
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 export const accountSchema = z.object({
@@ -127,6 +146,10 @@ export const accountSchema = z.object({
   accountCountry: optionalText(100, "Account Country"),
   trafficCountry: optionalText(100, "Traffic Country"),
   timezone: optionalText(50, "Timezone"),
+
+  accountCostUsd:       optionalDecimal(9_999_999, "Account cost"),
+  commissionPercent:    optionalDecimal(100, "Commission"),
+  cryptoPaymentPercent: optionalDecimal(100, "Crypto payment"),
 });
 
 export type AccountFormValues = z.infer<typeof accountSchema>;

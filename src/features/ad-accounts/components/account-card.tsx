@@ -59,6 +59,9 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
     trafficCountry: account.trafficCountry,
     currency:       account.currency,
     timezone:       account.timezone,
+    accountCostUsd:       account.ownAccountCostUsd ?? null,
+    commissionPercent:    account.ownCommissionPercent ?? null,
+    cryptoPaymentPercent: account.ownCryptoPaymentPercent ?? null,
   };
 
   const statusLabel   = ACCOUNT_STATUS_LABELS[account.status as AccountStatusValue] ?? account.status;
@@ -78,6 +81,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
   const isNonUsd = account.currency !== "USD";
   const hasSpend = account.rawSpentUsd > 0;
   const hasCommissions = (account.commissionPercent ?? 0) > 0 || (account.cryptoPaymentPercent ?? 0) > 0;
+  const hasOverride = account.ownCommissionPercent !== null || account.ownCryptoPaymentPercent !== null || account.ownAccountCostUsd !== null;
 
   // USD breakdown
   const commissionUsd = account.rawSpentUsd * ((account.commissionPercent ?? 0) / 100);
@@ -137,6 +141,11 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
       {/* ── Spend breakdown (USD) ─────────────────────────────────────── */}
       {hasSpend && hasCommissions && (
         <div className="mx-6 mt-3 rounded-xl border border-white/[0.06] bg-[hsl(222,47%,11%)] px-4 py-3 text-xs">
+          {hasOverride && (
+            <div className="mb-2 inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+              custom rates
+            </div>
+          )}
           <div className="flex items-center justify-between text-slate-400">
             <span>Raw spend</span>
             <span className="font-medium text-slate-300">{fmtUsd(account.rawSpentUsd)}</span>

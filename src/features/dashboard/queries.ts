@@ -74,8 +74,8 @@ const ACCT_MULT_CTE = Prisma.sql`
   WITH acct_mult AS (
     SELECT DISTINCT ON (a."externalId")
       a."externalId",
-      (1 + COALESCE(ag."commissionPercent", 0) / 100) *
-      (1 + COALESCE(ag."cryptoPaymentPercent", 0) / 100) as multiplier
+      (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
+      (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) as multiplier
     FROM "accounts" a
     LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
     WHERE a."externalId" IS NOT NULL

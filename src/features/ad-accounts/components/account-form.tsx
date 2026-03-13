@@ -10,7 +10,7 @@
  *  - onCancel:  called when the user cancels
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import { Input }  from "@/components/ui/input";
 import { Label }  from "@/components/ui/label";
@@ -50,8 +50,16 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
   const [pending,     setPending]     = useState(false);
   const [error,       setError]       = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [selectedAgencyId, setSelectedAgencyId] = useState(account?.agencyId ?? "");
 
   const isEdit = !!account;
+
+  const agencyMap = useMemo(() => {
+    const m = new Map<string, typeof agencies[number]>();
+    for (const a of agencies) m.set(a.id, a);
+    return m;
+  }, [agencies]);
+  const selectedAgency = selectedAgencyId ? agencyMap.get(selectedAgencyId) : undefined;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -129,6 +137,7 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
             id="account-agency"
             name="agencyId"
             defaultValue={account?.agencyId ?? ""}
+            onChange={(e) => setSelectedAgencyId(e.target.value)}
             disabled={pending}
             aria-invalid={!!err("agencyId")}
             className={selectClass}
@@ -286,6 +295,67 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
             ))}
           </select>
           {err("timezone") && <p className="text-xs text-red-500">{err("timezone")}</p>}
+        </div>
+      </div>
+
+      {/* ── Row 6: Commission overrides ──────────────────────────────────── */}
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-slate-400">
+          Commission overrides
+          {selectedAgency && (
+            <span className="ml-1 text-slate-500">— leave empty to inherit from agency</span>
+          )}
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="account-cost">Account cost (USD)</Label>
+            <Input
+              id="account-cost"
+              name="accountCostUsd"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={account?.accountCostUsd ?? ""}
+              placeholder={selectedAgency?.accountCostUsd?.toString() ?? "0.00"}
+              disabled={pending}
+              aria-invalid={!!err("accountCostUsd")}
+            />
+            {err("accountCostUsd") && <p className="text-xs text-red-500">{err("accountCostUsd")}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="account-commission">Commission (%)</Label>
+            <Input
+              id="account-commission"
+              name="commissionPercent"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              defaultValue={account?.commissionPercent ?? ""}
+              placeholder={selectedAgency?.commissionPercent?.toString() ?? "0"}
+              disabled={pending}
+              aria-invalid={!!err("commissionPercent")}
+            />
+            {err("commissionPercent") && <p className="text-xs text-red-500">{err("commissionPercent")}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="account-crypto">Crypto payment (%)</Label>
+            <Input
+              id="account-crypto"
+              name="cryptoPaymentPercent"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              defaultValue={account?.cryptoPaymentPercent ?? ""}
+              placeholder={selectedAgency?.cryptoPaymentPercent?.toString() ?? "0"}
+              disabled={pending}
+              aria-invalid={!!err("cryptoPaymentPercent")}
+            />
+            {err("cryptoPaymentPercent") && <p className="text-xs text-red-500">{err("cryptoPaymentPercent")}</p>}
+          </div>
         </div>
       </div>
 

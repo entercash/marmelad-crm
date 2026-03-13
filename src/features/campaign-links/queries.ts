@@ -249,31 +249,19 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
     getCommissionMultipliers(taboolaIds),
   ]);
 
-  // Determine global date range
-  let globalMinDay: Date | null = null;
-  let globalMaxDay: Date | null = null;
-  taboolaStats.forEach((stats) => {
-    if (!globalMinDay || stats.minDay < globalMinDay) globalMinDay = stats.minDay;
-    if (!globalMaxDay || stats.maxDay > globalMaxDay) globalMaxDay = stats.maxDay;
-  });
-
-  // Keitaro stats (may return null if API unreachable)
+  // Keitaro stats — use wide date range to capture all conversions
+  const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
+  const keitaroIds = Array.from(keitaroIdSet);
+  const from = "2024-01-01";
+  const to = new Date().toISOString().slice(0, 10);
   let keitaroStats: Map<
     number,
     { clicks: number; leads: number; sales: number; revenue: number }
   > | null = null;
-  if (globalMinDay && globalMaxDay) {
-    const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
-    const keitaroIds = Array.from(keitaroIdSet);
-    const minDay: Date = globalMinDay;
-    const maxDay: Date = globalMaxDay;
-    const from = minDay.toISOString().slice(0, 10);
-    const to = maxDay.toISOString().slice(0, 10);
+  if (keitaroIds.length > 0) {
     console.log("[getCampaignLinkStats] Keitaro IDs:", keitaroIds, "dateRange:", from, "→", to);
     keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, from, to);
     console.log("[getCampaignLinkStats] keitaroStats:", keitaroStats ? `${keitaroStats.size} entries` : "null");
-  } else {
-    console.log("[getCampaignLinkStats] No date range — skipping Keitaro API call");
   }
 
   // Merge

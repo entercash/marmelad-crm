@@ -91,10 +91,10 @@ export class AdspectClient {
    *
    * The API returns array-of-arrays. We request:
    *   group_by: [sub_id]
-   *   metrics:  [clicks, money_hits, givt, sivt, mia]
+   *   metrics:  [clicks, money_hits, quality]
    *
-   * So each raw row is: [sub_id, clicks, money_hits, givt, sivt, mia]
-   *                       idx 0    idx 1   idx 2     idx 3 idx 4 idx 5
+   * So each raw row is: [sub_id, clicks, money_hits, quality]
+   *                       idx 0    idx 1   idx 2      idx 3
    */
   async getFunnelBySite(params: AdspectFunnelParams): Promise<AdspectFunnelRow[]> {
     const searchParams = new URLSearchParams();
@@ -103,7 +103,7 @@ export class AdspectClient {
     searchParams.append("group_by[]", "sub_id");
 
     // Metrics (order matters — determines array index)
-    for (const m of ["clicks", "money_hits", "givt", "sivt", "mia"]) {
+    for (const m of ["clicks", "money_hits", "quality"]) {
       searchParams.append("metrics[]", m);
     }
 
@@ -123,9 +123,7 @@ export class AdspectClient {
       sub_id:     String(row[0] ?? ""),
       clicks:     Number(row[1] ?? 0),
       money_hits: Number(row[2] ?? 0),
-      givt:       Number(row[3] ?? 0),
-      sivt:       Number(row[4] ?? 0),
-      mia:        Number(row[5] ?? 0),
+      quality:    Number(row[3] ?? 0),
     }));
   }
 }

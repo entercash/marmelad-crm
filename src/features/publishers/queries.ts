@@ -258,8 +258,8 @@ async function getAdspectStatsBySite(
     for (const row of rows) {
       if (!row.sub_id) continue;
       const totalClicks = row.clicks || 0;
-      const botClicks = (row.givt || 0) + (row.sivt || 0) + (row.mia || 0);
-      const botPct = totalClicks > 0 ? (botClicks / totalClicks) * 100 : 0;
+      // quality = % of money_hits (good traffic); bot% = 100 − quality
+      const botPct = totalClicks > 0 ? 100 - row.quality : 0;
       map.set(row.sub_id, {
         botPercent: Math.round(botPct * 10) / 10,
         adspectClicks: totalClicks,

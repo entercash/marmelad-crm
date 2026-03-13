@@ -25,10 +25,8 @@ export interface AdspectStream {
 export interface AdspectFunnelRow {
   sub_id: string;        // Taboola site_id (passed via UTM src_id={site_id})
   clicks: number;        // total clicks seen by Adspect
-  money_hits: number;    // "good" clicks — real human traffic
-  givt: number;          // General Invalid Traffic (IP blacklists, UA, etc.)
-  sivt: number;          // Sophisticated Invalid Traffic (fingerprint-based)
-  mia: number;           // Missing In Action (no JS fingerprint submitted)
+  money_hits: number;    // "good" clicks — real human traffic (passed filter)
+  quality: number;       // money_hits / clicks * 100 (% of good traffic)
 }
 
 /** Parameters for the funnel report API call */

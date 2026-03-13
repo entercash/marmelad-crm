@@ -31,6 +31,7 @@ export type AccountRow = {
   accountCountry: string | null;
   trafficCountry: string | null;
   currency:       string;
+  timezone:       string | null;
   /** Raw spend in the account's native currency (from CSV). */
   rawSpentNative:  number;
   /** Raw spend converted to USD (historical FX, no commissions). */
@@ -66,6 +67,7 @@ export type AccountEditData = {
   accountCountry: string | null;
   trafficCountry: string | null;
   currency:       string;
+  timezone:       string | null;
 };
 
 // ─── Stats type ─────────────────────────────────────────────────────────────
@@ -165,6 +167,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         accountCountry: r.accountCountry,
         trafficCountry: r.trafficCountry,
         currency:       r.currency,
+        timezone:       r.timezone,
         rawSpentNative,
         rawSpentUsd,
         totalCostNative,

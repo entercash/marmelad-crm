@@ -24,6 +24,7 @@ import {
   ACCOUNT_STATUSES,  ACCOUNT_STATUS_LABELS,
   CURRENCIES,        CURRENCY_LABELS,
 } from "@/features/ad-accounts/schema";
+import { COMMON_TIMEZONES } from "@/lib/date";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -262,6 +263,29 @@ export function AccountForm({ account, agencies, onSuccess, onCancel }: AccountF
           {err("trafficCountry") && (
             <p className="text-xs text-red-500">{err("trafficCountry")}</p>
           )}
+        </div>
+      </div>
+
+      {/* ── Row 5: Timezone ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="account-timezone">Timezone</Label>
+          <select
+            id="account-timezone"
+            name="timezone"
+            defaultValue={account?.timezone ?? ""}
+            disabled={pending}
+            aria-invalid={!!err("timezone")}
+            className={selectClass}
+          >
+            <option value="">Not set</option>
+            {COMMON_TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+          {err("timezone") && <p className="text-xs text-red-500">{err("timezone")}</p>}
         </div>
       </div>
 

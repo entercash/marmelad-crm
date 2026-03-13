@@ -126,6 +126,7 @@ export const accountSchema = z.object({
 
   accountCountry: optionalText(100, "Account Country"),
   trafficCountry: optionalText(100, "Traffic Country"),
+  timezone: optionalText(50, "Timezone"),
 });
 
 export type AccountFormValues = z.infer<typeof accountSchema>;

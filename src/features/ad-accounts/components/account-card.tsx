@@ -58,6 +58,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
     accountCountry: account.accountCountry,
     trafficCountry: account.trafficCountry,
     currency:       account.currency,
+    timezone:       account.timezone,
   };
 
   const statusLabel   = ACCOUNT_STATUS_LABELS[account.status as AccountStatusValue] ?? account.status;

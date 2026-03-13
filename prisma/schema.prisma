@@ -224,6 +224,7 @@ model Account {
   accountCountry String?         // Country where the account is registered
   trafficCountry String?         // Country where traffic is being run
   currency       String          @default("USD") // Account billing currency
+  timezone       String?         // IANA timezone (e.g. "US/Eastern", "Europe/Moscow")
   totalSpentUsd  Decimal         @default(0) @db.Decimal(14, 2) // Denormalized spend total (populated by sync jobs)
 
   topUps AccountTopUp[]

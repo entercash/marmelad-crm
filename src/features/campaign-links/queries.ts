@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { CRM_TIMEZONE, todayCrm } from "@/lib/date";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ async function getKeitaroStatsForCampaigns(
     // Fetch all campaigns (IN_LIST filter doesn't work for campaign_id in Keitaro),
     // then filter results in code.
     const report = await client.buildReport({
-      range: { from: dateFrom, to: dateTo, timezone: "UTC" },
+      range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
       grouping: ["campaign_id"],
       metrics: ["clicks", "conversions", "sales", "revenue"],
       limit: 10_000,
@@ -249,7 +250,7 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
   const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
   const keitaroIds = Array.from(keitaroIdSet);
   const from = "2024-01-01";
-  const to = new Date().toISOString().slice(0, 10);
+  const to = todayCrm();
   let keitaroStats: Map<
     number,
     { clicks: number; leads: number; sales: number; revenue: number }

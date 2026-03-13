@@ -14,6 +14,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { CRM_TIMEZONE } from "@/lib/date";
 import { createKeitaroClient } from "@/integrations/keitaro";
 import type { KeitaroDateRange } from "@/integrations/keitaro";
 import {
@@ -72,7 +73,7 @@ export async function syncKeitaroConversionStatsDaily(
     const keitaroRange: KeitaroDateRange = {
       from: params.dateRange.startDate,
       to: params.dateRange.endDate,
-      timezone: "UTC",
+      timezone: CRM_TIMEZONE,
     };
 
     // Fetch from Keitaro

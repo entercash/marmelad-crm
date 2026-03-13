@@ -14,6 +14,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { CRM_TIMEZONE, todayCrm } from "@/lib/date";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -168,10 +169,10 @@ async function getKeitaroStatsByCampaignAndSite(
     });
 
     const from = "2024-01-01";
-    const to = new Date().toISOString().slice(0, 10);
+    const to = todayCrm();
 
     const report = await client.buildReport({
-      range: { from, to, timezone: "UTC" },
+      range: { from, to, timezone: CRM_TIMEZONE },
       grouping: ["campaign_id", "sub_id_1"],
       metrics: ["conversions", "revenue"],
       limit: 10_000,

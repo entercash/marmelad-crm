@@ -30,7 +30,8 @@ export type KeitaroGroupingField =
 /** Metric columns available in the Keitaro report builder */
 export type KeitaroMetric =
   | "clicks"
-  | "leads"        // total conversions
+  | "conversions"  // all conversions (any status)
+  | "leads"        // conversions with "lead" status
   | "sales"        // approved conversions
   | "rejected"     // rejected conversions
   | "revenue"      // revenue from approved conversions
@@ -74,8 +75,9 @@ export interface KeitaroReportRow {
 
   // Metrics — may be string | number depending on Keitaro version
   clicks?: number | string;
-  leads?: number | string;    // total conversions received
-  sales?: number | string;    // approved conversions
+  conversions?: number | string; // all conversions (any status)
+  leads?: number | string;       // conversions with "lead" status
+  sales?: number | string;       // approved conversions
   rejected?: number | string; // rejected conversions
   revenue?: number | string;  // revenue from approved leads (net)
   cost?: number | string;

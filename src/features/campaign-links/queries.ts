@@ -151,7 +151,7 @@ async function getKeitaroStatsForCampaigns(
     const report = await client.buildReport({
       range: { from: dateFrom, to: dateTo, timezone: "UTC" },
       grouping: ["campaign_id"],
-      metrics: ["clicks", "leads", "sales", "revenue"],
+      metrics: ["clicks", "conversions", "sales", "revenue"],
       filters: [
         {
           name: "campaign_id",
@@ -169,7 +169,7 @@ async function getKeitaroStatsForCampaigns(
       if (!campId) continue;
       map.set(campId, {
         clicks: Number(row.clicks ?? 0),
-        leads: Number(row.leads ?? 0),
+        leads: Number(row.conversions ?? 0),
         sales: Number(row.sales ?? 0),
         revenue: Number(row.revenue ?? 0),
       });

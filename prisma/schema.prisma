@@ -860,6 +860,45 @@ model AccountTopUp {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8d — INTEGRATION SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Key-value store for integration credentials and configuration.
+/// Sensitive values (API keys) are AES-256-GCM encrypted at rest.
+model IntegrationSetting {
+  id    String @id @default(cuid())
+  key   String @unique // e.g. "keitaro.apiUrl", "keitaro.apiKey"
+  value String         // encrypted for sensitive values
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_settings")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 8e — KEITARO CAMPAIGNS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Keitaro campaign synced via Admin API.
+/// Used for mapping Taboola campaigns ↔ Keitaro campaigns in CampaignMapping.
+model KeitaroCampaign {
+  id         String   @id @default(cuid())
+  externalId Int      @unique // Keitaro campaign ID (integer)
+  name       String
+  alias      String
+  state      String           // "active", "disabled", "deleted"
+  groupId    Int?
+
+  syncLogId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@map("keitaro_campaigns")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // DOMAIN 9 — WHITE PAGES
 // ══════════════════════════════════════════════════════════════════════════════
 

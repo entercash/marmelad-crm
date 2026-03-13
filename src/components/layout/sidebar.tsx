@@ -13,6 +13,7 @@ import {
   Wallet,
   FileCheck2,
   FileUp,
+  Zap,
   Settings,
   Activity,
   LogOut,
@@ -50,6 +51,7 @@ const navigation: NavGroup[] = [
     label: "Integrations",
     items: [
       { label: "Taboola CSV", href: "/integrations/taboola-csv", icon: FileUp },
+      { label: "Keitaro",     href: "/integrations/keitaro",     icon: Zap },
     ],
   },
   {

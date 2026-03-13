@@ -90,13 +90,9 @@ export interface KeitaroReportResponse {
 // ─── Campaigns ───────────────────────────────────────────────────────────────
 
 export interface KeitaroCampaign {
-  id: number;    // Keitaro campaign ID (integer)
+  id: number;                                // Keitaro campaign ID (integer)
   name: string;
   alias: string;
   state: "active" | "disabled" | "deleted";
-}
-
-export interface KeitaroCampaignsResponse {
-  rows?: KeitaroCampaign[];
-  // Keitaro sometimes returns a flat array, sometimes wrapped
+  group_id?: number | null;
 }

@@ -19,6 +19,7 @@ import type {
   KeitaroDateRange,
   KeitaroMetric,
   KeitaroGroupingField,
+  KeitaroCampaign,
 } from "./types";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -127,6 +128,16 @@ export class KeitaroClient {
       "/report/build",
       request,
     );
+  }
+
+  // ── Campaign List ───────────────────────────────────────────────────────
+
+  /**
+   * Fetch all campaigns from Keitaro.
+   * Returns a flat array of campaign objects.
+   */
+  async getCampaigns(): Promise<KeitaroCampaign[]> {
+    return this.get<KeitaroCampaign[]>("/campaigns");
   }
 
   // ── Typed API Methods ─────────────────────────────────────────────────────

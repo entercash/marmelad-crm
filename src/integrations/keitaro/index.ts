@@ -14,4 +14,5 @@ export type {
   KeitaroGroupingField,
   KeitaroMetric,
   KeitaroFilter,
+  KeitaroCampaign,
 } from "./types";

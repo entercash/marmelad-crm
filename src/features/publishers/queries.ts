@@ -437,8 +437,8 @@ export async function getPublisherStats(params: {
         ? ((revenue - spend) / spend) * 100
         : null;
 
-    // Adspect data
-    const adspect = adspectStats?.get(r.siteExternalId) ?? null;
+    // Adspect data — sub_id may be site name (domain) or external ID
+    const adspect = adspectStats?.get(r.siteName) ?? adspectStats?.get(r.siteExternalId) ?? null;
     const botPercent = adspect?.botPercent ?? null;
     const clickDiscrepancy = adspect ? clicks - adspect.adspectClicks : null;
 

@@ -235,16 +235,23 @@ async function getAdspectStatsBySite(
     const streamIds = Array.from(new Set(
       linksWithStreams.map((l) => l.adspectStreamId!).filter(Boolean),
     ));
-    if (streamIds.length === 0) return null;
+    if (streamIds.length === 0) {
+      console.log("[Adspect] No CampaignLinks with adspectStreamId found");
+      return null;
+    }
 
     // 2. Check if Adspect is configured
     const { getAdspectSettings } = await import(
       "@/features/integration-settings/queries"
     );
     const settings = await getAdspectSettings();
-    if (!settings.apiKey) return null;
+    if (!settings.apiKey) {
+      console.log("[Adspect] No API key configured");
+      return null;
+    }
 
     // 3. Call Adspect funnel API
+    console.log("[Adspect] Fetching funnel for streams:", streamIds, "dates:", dateFrom ?? "2024-01-01", "-", dateTo ?? todayCrm());
     const { AdspectClient } = await import("@/integrations/adspect/client");
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const rows = await client.getFunnelBySite({
@@ -252,6 +259,8 @@ async function getAdspectStatsBySite(
       dateFrom: dateFrom ?? "2024-01-01",
       dateTo: dateTo ?? todayCrm(),
     });
+
+    console.log("[Adspect] Got", rows.length, "rows. Sample:", JSON.stringify(rows.slice(0, 3)));
 
     // 4. Build map keyed by sub_id (= site external ID)
     const map = new Map<string, { botPercent: number; adspectClicks: number }>();
@@ -265,6 +274,7 @@ async function getAdspectStatsBySite(
         adspectClicks: totalClicks,
       });
     }
+    console.log("[Adspect] Map size:", map.size, "Sample keys:", Array.from(map.keys()).slice(0, 5));
     return map;
   } catch (err) {
     console.error("[getAdspectStatsBySite] Adspect API error:", err);

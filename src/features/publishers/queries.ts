@@ -427,8 +427,14 @@ export async function getPublisherStats(params: {
         ? ((revenue - spend) / spend) * 100
         : null;
 
-    // Adspect data — sub_id may be site name (domain) or external ID
-    const adspect = adspectStats?.get(r.siteName) ?? adspectStats?.get(r.siteExternalId) ?? null;
+    // Adspect data — sub_id may be siteExternalId (new), siteName, or domain from siteUrl (legacy)
+    let adspect = adspectStats?.get(r.siteExternalId) ?? adspectStats?.get(r.siteName) ?? null;
+    if (!adspect && r.siteUrl && adspectStats) {
+      try {
+        const hostname = new URL(r.siteUrl.startsWith("http") ? r.siteUrl : `https://${r.siteUrl}`).hostname;
+        adspect = adspectStats.get(hostname) ?? null;
+      } catch { /* invalid URL */ }
+    }
     const botPercent = adspect?.botPercent ?? null;
     const clickDiscrepancy = adspect ? clicks - adspect.adspectClicks : null;
 

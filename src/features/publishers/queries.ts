@@ -219,11 +219,15 @@ async function getKeitaroStatsByCampaignAndSite(
  * Returns Map<siteExternalId, { botPercent, adspectClicks }>.
  * Returns null when Adspect is not configured or no streams are mapped.
  */
+const ADSPECT_CACHE_TTL = 600; // 10 minutes
+
+type AdspectSiteStats = { botPercent: number; adspectClicks: number };
+
 async function getAdspectStatsBySite(
   siteExternalIds: string[],
   dateFrom?: string,
   dateTo?: string,
-): Promise<Map<string, { botPercent: number; adspectClicks: number }> | null> {
+): Promise<Map<string, AdspectSiteStats> | null> {
   if (siteExternalIds.length === 0) return new Map();
 
   try {
@@ -244,17 +248,25 @@ async function getAdspectStatsBySite(
     const settings = await getAdspectSettings();
     if (!settings.apiKey) return null;
 
-    // 3. Call Adspect funnel API
+    // 3. Check Redis cache
+    const df = dateFrom ?? "2024-01-01";
+    const dt = dateTo ?? todayCrm();
+    const cacheKey = `adspect:funnel:${streamIds.sort().join(",")}:${df}:${dt}`;
+
+    const { redis } = await import("@/lib/redis");
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      const entries: [string, AdspectSiteStats][] = JSON.parse(cached);
+      return new Map(entries);
+    }
+
+    // 4. Call Adspect funnel API
     const { AdspectClient } = await import("@/integrations/adspect/client");
     const client = new AdspectClient({ apiKey: settings.apiKey });
-    const rows = await client.getFunnelBySite({
-      streamIds,
-      dateFrom: dateFrom ?? "2024-01-01",
-      dateTo: dateTo ?? todayCrm(),
-    });
+    const rows = await client.getFunnelBySite({ streamIds, dateFrom: df, dateTo: dt });
 
-    // 4. Build map keyed by sub_id (= site external ID)
-    const map = new Map<string, { botPercent: number; adspectClicks: number }>();
+    // 5. Build map keyed by sub_id (= site external ID)
+    const map = new Map<string, AdspectSiteStats>();
     for (const row of rows) {
       if (!row.sub_id) continue;
       const totalClicks = row.clicks || 0;
@@ -265,6 +277,10 @@ async function getAdspectStatsBySite(
         adspectClicks: totalClicks,
       });
     }
+
+    // 6. Store in Redis cache
+    await redis.set(cacheKey, JSON.stringify(Array.from(map.entries())), "EX", ADSPECT_CACHE_TTL).catch(() => {});
+
     return map;
   } catch (err) {
     console.error("[getAdspectStatsBySite] Adspect API error:", err);

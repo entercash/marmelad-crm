@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Sparkline — lightweight inline chart for table cells.
  *

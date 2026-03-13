@@ -1,8 +1,11 @@
 /**
  * Publishers data-access layer (v2 — CSV aggregation).
  *
- * Aggregates Taboola CSV import data per site/publisher,
- * optionally matched with Keitaro leads via sub_id.
+ * Aggregates Taboola CSV import data per site/publisher with:
+ *   - Commission-adjusted spend (account → agency → multiplier)
+ *   - Keitaro leads matched via campaign_id + sub_id_1 (= Taboola site ID)
+ *   - Revenue calculated from CampaignLink payment model (CPL/CPA)
+ *   - Country filtering via CampaignLink.country (Keitaro) + TaboolaCsvRow.countryCode (Taboola)
  *
  * Called only from the Publishers Server Component — never imported by client code.
  */
@@ -52,6 +55,15 @@ type RawStatsRow = {
   spend: unknown; // Prisma Decimal from SUM
 };
 
+// ─── Internal types ─────────────────────────────────────────────────────────
+
+type CampaignLinkInfo = {
+  taboolaCampaignExternalId: string;
+  keitaroCampaignExternalId: number;
+  paymentModel: string;
+  cplRate: number | null;
+};
+
 // ─── Dropdown queries ───────────────────────────────────────────────────────
 
 /** Get distinct countries from CSV data for the filter dropdown. */
@@ -67,20 +79,85 @@ export async function getDistinctCountries(): Promise<CountryOption[]> {
   return rows.map((r) => ({ code: r.countryCode, name: r.country }));
 }
 
-// ─── Keitaro sub_id_1 stats ─────────────────────────────────────────────────
+// ─── Campaign links for publisher matching ──────────────────────────────────
 
 /**
- * Fetch Keitaro stats grouped by sub_id_1 (= Taboola site ID) for publisher matching.
- *
- * When a country filter is active, groups by sub_id_1 + country so we can
- * filter Keitaro leads to the same GEO as the Taboola CSV data.
- * Without a country filter, groups by sub_id_1 only (already aggregated).
- *
- * Returns null on error or missing API credentials.
+ * Get CampaignLinks relevant for publisher matching.
+ * When country filter is active, only return links for that country.
  */
-async function getKeitaroStatsBySubId(
-  countryFilter?: string,
+async function getCampaignLinksForPublishers(
+  country?: string,
+): Promise<CampaignLinkInfo[]> {
+  const where: Prisma.CampaignLinkWhereInput = {};
+  if (country) {
+    where.country = country;
+  }
+
+  const links = await prisma.campaignLink.findMany({
+    where,
+    select: {
+      taboolaCampaignExternalId: true,
+      paymentModel: true,
+      cplRate: true,
+      keitaroCampaign: { select: { externalId: true } },
+    },
+  });
+
+  return links.map((l) => ({
+    taboolaCampaignExternalId: l.taboolaCampaignExternalId,
+    keitaroCampaignExternalId: l.keitaroCampaign.externalId,
+    paymentModel: l.paymentModel,
+    cplRate: l.cplRate ? Number(l.cplRate) : null,
+  }));
+}
+
+// ─── Site → campaign associations ───────────────────────────────────────────
+
+/**
+ * For a set of sites, find which Taboola campaigns they belong to.
+ * Returns Map<siteExternalId, campaignExternalId[]>.
+ */
+async function getSiteCampaignAssociations(
+  siteExternalIds: string[],
+  country?: string,
+): Promise<Map<string, string[]>> {
+  if (siteExternalIds.length === 0) return new Map();
+
+  const countryClause = country
+    ? Prisma.sql`AND "countryCode" = ${country}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<
+    { siteExternalId: string; campaignExternalId: string }[]
+  >(
+    Prisma.sql`
+      SELECT DISTINCT "siteExternalId", "campaignExternalId"
+      FROM "taboola_csv_rows"
+      WHERE "siteExternalId" IN (${Prisma.join(siteExternalIds)})
+      ${countryClause}
+    `,
+  );
+
+  const map = new Map<string, string[]>();
+  for (const r of rows) {
+    const arr = map.get(r.siteExternalId) ?? [];
+    arr.push(r.campaignExternalId);
+    map.set(r.siteExternalId, arr);
+  }
+  return map;
+}
+
+// ─── Keitaro stats by campaign + sub_id_1 ───────────────────────────────────
+
+/**
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
+ * Returns Map keyed by "{keitaroCampaignId}_{siteExternalId}".
+ */
+async function getKeitaroStatsByCampaignAndSite(
+  keitaroExternalIds: number[],
 ): Promise<Map<string, { leads: number; revenue: number }> | null> {
+  if (keitaroExternalIds.length === 0) return new Map();
+
   try {
     const settings = await getKeitaroSettings();
     if (!settings.apiUrl || !settings.apiKey) return null;
@@ -93,53 +170,45 @@ async function getKeitaroStatsBySubId(
     const from = "2024-01-01";
     const to = new Date().toISOString().slice(0, 10);
 
-    // When filtering by country, include country in grouping to match GEOs.
-    // Without filter, group by sub_id_1 only (fewer rows, fits in limit).
-    const grouping: ("sub_id_1" | "country")[] = countryFilter
-      ? ["sub_id_1", "country"]
-      : ["sub_id_1"];
-
     const report = await client.buildReport({
       range: { from, to, timezone: "UTC" },
-      grouping,
+      grouping: ["campaign_id", "sub_id_1"],
       metrics: ["conversions", "revenue"],
       limit: 10_000,
       offset: 0,
     });
 
+    const idSet = new Set(keitaroExternalIds);
     const map = new Map<string, { leads: number; revenue: number }>();
     for (const row of report.rows) {
+      const campId = Number(row.campaign_id);
+      if (!campId || !idSet.has(campId)) continue;
+
       const subId = String(row.sub_id_1 ?? "").trim();
       if (!subId) continue;
 
-      // When country filter is active, skip rows for other countries
-      if (countryFilter) {
-        const rowCountry = String(row.country ?? "").trim();
-        if (rowCountry !== countryFilter) continue;
-      }
-
-      const leads = Number(row.conversions ?? 0);
-      const revenue = Number(row.revenue ?? 0);
-
-      // Accumulate in case multiple rows map to the same sub_id_1
-      const existing = map.get(subId);
-      if (existing) {
-        existing.leads += leads;
-        existing.revenue += revenue;
-      } else {
-        map.set(subId, { leads, revenue });
-      }
+      const key = `${campId}_${subId}`;
+      map.set(key, {
+        leads: Number(row.conversions ?? 0),
+        revenue: Number(row.revenue ?? 0),
+      });
     }
     return map;
   } catch (err) {
-    console.error("[getKeitaroStatsBySubId] Keitaro API error:", err);
+    console.error("[getKeitaroStatsByCampaignAndSite] Keitaro API error:", err);
     return null;
   }
 }
 
 // ─── Main stats query ───────────────────────────────────────────────────────
 
-/** Get publisher stats aggregated from TaboolaCsvRow, with optional country filter and pagination. */
+/**
+ * Get publisher stats aggregated from TaboolaCsvRow with:
+ *   - Commission-adjusted spend via Account → Agency chain
+ *   - Keitaro leads matched via CampaignLink → campaign_id + sub_id_1
+ *   - Revenue from CampaignLink payment model (CPL: leads × rate, CPA: Keitaro revenue)
+ *   - Country filter on both Taboola (countryCode) and Keitaro (CampaignLink.country) sides
+ */
 export async function getPublisherStats(params: {
   country?: string;
   page?: number;
@@ -148,17 +217,16 @@ export async function getPublisherStats(params: {
   const { country, page = 1, perPage = 50 } = params;
   const offset = (page - 1) * perPage;
 
-  // Build conditional WHERE clause
   const whereClause = country
-    ? Prisma.sql`WHERE "countryCode" = ${country}`
+    ? Prisma.sql`WHERE t."countryCode" = ${country}`
     : Prisma.empty;
 
-  // Total count of distinct sites
+  // 1. Total count of distinct sites
   const countRows = await prisma.$queryRaw<RawCountRow[]>(
     Prisma.sql`
       SELECT COUNT(DISTINCT "siteExternalId") as total
       FROM "taboola_csv_rows"
-      ${whereClause}
+      ${country ? Prisma.sql`WHERE "countryCode" = ${country}` : Prisma.empty}
     `,
   );
   const total = Number(countRows[0]?.total ?? 0);
@@ -167,28 +235,55 @@ export async function getPublisherStats(params: {
     return { rows: [], total: 0 };
   }
 
-  // Aggregated stats per site
+  // 2. Aggregated stats per site WITH commission-adjusted spend
+  //    CTE computes per-account multiplier: (1 + commPct/100) × (1 + cryptoPct/100)
+  //    Main query applies multiplier per CSV row before SUM
   const rawRows = await prisma.$queryRaw<RawStatsRow[]>(
     Prisma.sql`
+      WITH acct_mult AS (
+        SELECT DISTINCT ON (a."externalId")
+          a."externalId",
+          (1 + COALESCE(ag."commissionPercent", 0) / 100) *
+          (1 + COALESCE(ag."cryptoPaymentPercent", 0) / 100) as multiplier
+        FROM "accounts" a
+        LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
+        WHERE a."externalId" IS NOT NULL
+        ORDER BY a."externalId"
+      )
       SELECT
-        "siteExternalId",
-        MAX("siteName") as "siteName",
-        MAX("siteUrl") as "siteUrl",
-        COALESCE(SUM("clicks"), 0) as "clicks",
-        COALESCE(SUM("impressions"), 0) as "impressions",
-        COALESCE(SUM("spentUsd"), 0) as "spend"
-      FROM "taboola_csv_rows"
+        t."siteExternalId",
+        MAX(t."siteName") as "siteName",
+        MAX(t."siteUrl") as "siteUrl",
+        COALESCE(SUM(t."clicks"), 0) as "clicks",
+        COALESCE(SUM(t."impressions"), 0) as "impressions",
+        COALESCE(SUM(t."spentUsd" * COALESCE(am.multiplier, 1)), 0) as "spend"
+      FROM "taboola_csv_rows" t
+      LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
       ${whereClause}
-      GROUP BY "siteExternalId"
-      ORDER BY SUM("spentUsd") DESC
+      GROUP BY t."siteExternalId"
+      ORDER BY SUM(t."spentUsd" * COALESCE(am.multiplier, 1)) DESC
       LIMIT ${perPage} OFFSET ${offset}
     `,
   );
 
-  // Keitaro leads by sub_id_1 (= Taboola site ID), filtered by country if active
-  const keitaroStats = await getKeitaroStatsBySubId(country);
+  // 3. Get CampaignLinks (filtered by country for Keitaro side)
+  const links = await getCampaignLinksForPublishers(country);
+  const linkByTaboolaCampaign = new Map(
+    links.map((l) => [l.taboolaCampaignExternalId, l]),
+  );
 
-  // Merge Taboola + Keitaro data
+  // 4. For sites on this page, find which campaigns they belong to
+  const siteIds = rawRows.map((r) => r.siteExternalId);
+  const siteCampaigns = await getSiteCampaignAssociations(siteIds, country);
+
+  // 5. Fetch Keitaro stats grouped by campaign_id + sub_id_1
+  const keitaroExternalIds = Array.from(
+    new Set(links.map((l) => l.keitaroCampaignExternalId)),
+  );
+  const keitaroStats =
+    await getKeitaroStatsByCampaignAndSite(keitaroExternalIds);
+
+  // 6. Merge Taboola + Keitaro data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
     const clicks = Number(r.clicks);
     const impressions = Number(r.impressions);
@@ -196,11 +291,32 @@ export async function getPublisherStats(params: {
     const cpc = clicks > 0 ? spend / clicks : null;
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : null;
 
-    // Match Keitaro sub_id_1 with Taboola siteExternalId
-    const ks = keitaroStats?.get(r.siteExternalId) ?? null;
+    // Sum leads and revenue across campaigns for this site
+    let totalLeads = 0;
+    let totalRevenue = 0;
+    let hasKeitaroData = false;
 
-    const leads = ks?.leads ?? null;
-    const revenue = ks?.revenue ?? null;
+    const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
+    for (const campaignExternalId of campaigns) {
+      const link = linkByTaboolaCampaign.get(campaignExternalId);
+      if (!link) continue; // No CampaignLink for this campaign
+
+      const key = `${link.keitaroCampaignExternalId}_${r.siteExternalId}`;
+      const ks = keitaroStats?.get(key);
+      if (!ks) continue;
+
+      hasKeitaroData = true;
+      totalLeads += ks.leads;
+
+      if (link.paymentModel === "CPL" && link.cplRate !== null) {
+        totalRevenue += ks.leads * link.cplRate;
+      } else if (link.paymentModel === "CPA") {
+        totalRevenue += ks.revenue;
+      }
+    }
+
+    const leads = hasKeitaroData ? totalLeads : null;
+    const revenue = hasKeitaroData ? totalRevenue : null;
     const profit = revenue !== null ? revenue - spend : null;
     const roi =
       revenue !== null && spend > 0

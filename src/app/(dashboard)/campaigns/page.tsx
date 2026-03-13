@@ -16,6 +16,7 @@ import {
   getKeitaroCampaignOptions,
   type CampaignStatsRow,
 } from "@/features/campaign-links/queries";
+import { getDistinctCountries } from "@/features/publishers/queries";
 
 export const metadata = { title: "Campaigns" };
 
@@ -42,12 +43,14 @@ export default async function CampaignsPage() {
   let stats: CampaignStatsRow[] = [];
   let taboolaCampaigns: Awaited<ReturnType<typeof getDistinctTaboolaCampaigns>> = [];
   let keitaroCampaigns: Awaited<ReturnType<typeof getKeitaroCampaignOptions>> = [];
+  let countries: Awaited<ReturnType<typeof getDistinctCountries>> = [];
 
   try {
-    [stats, taboolaCampaigns, keitaroCampaigns] = await Promise.all([
+    [stats, taboolaCampaigns, keitaroCampaigns, countries] = await Promise.all([
       getCampaignLinkStats(),
       getDistinctTaboolaCampaigns(),
       getKeitaroCampaignOptions(),
+      getDistinctCountries(),
     ]);
   } catch (err) {
     console.error("[CampaignsPage] Failed to fetch data:", err);
@@ -62,6 +65,7 @@ export default async function CampaignsPage() {
           <CampaignLinkDialog
             taboolaCampaigns={taboolaCampaigns}
             keitaroCampaigns={keitaroCampaigns}
+            countries={countries}
             trigger={
               <Button size="sm">
                 <Plus className="mr-1.5 h-4 w-4" />
@@ -81,6 +85,7 @@ export default async function CampaignsPage() {
             <CampaignLinkDialog
               taboolaCampaigns={taboolaCampaigns}
               keitaroCampaigns={keitaroCampaigns}
+              countries={countries}
               trigger={
                 <Button size="sm">
                   <Plus className="mr-1.5 h-4 w-4" />
@@ -104,6 +109,7 @@ export default async function CampaignsPage() {
                 <tr className="border-b border-white/[0.06] text-left text-xs font-medium uppercase tracking-wider text-slate-400">
                   <th className="px-4 py-3">Keitaro Campaign</th>
                   <th className="px-4 py-3">Model</th>
+                  <th className="px-4 py-3">GEO</th>
                   <th className="px-4 py-3 text-right">Clicks</th>
                   <th className="px-4 py-3 text-right">Leads</th>
                   <th className="px-4 py-3 text-right">Spend</th>
@@ -139,6 +145,9 @@ export default async function CampaignsPage() {
                           ? ` $${row.cplRate}`
                           : ""}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-slate-400">
+                      {row.country ?? "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtNum(row.clicks)}

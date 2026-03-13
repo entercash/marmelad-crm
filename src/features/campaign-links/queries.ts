@@ -26,6 +26,7 @@ export type CampaignLinkRow = {
   keitaroCampaignName: string;
   paymentModel: string;
   cplRate: number | null;
+  country: string | null;
   createdAt: Date;
 };
 
@@ -35,6 +36,7 @@ export type CampaignStatsRow = {
   keitaroCampaignName: string;
   paymentModel: string;
   cplRate: number | null;
+  country: string | null;
   // Taboola side
   clicks: number;
   spend: number;
@@ -95,6 +97,7 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
     keitaroCampaignName: l.keitaroCampaign.name,
     paymentModel: l.paymentModel,
     cplRate: l.cplRate ? Number(l.cplRate) : null,
+    country: l.country,
     createdAt: l.createdAt,
   }));
 }
@@ -293,6 +296,7 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
       keitaroCampaignName: link.keitaroCampaignName,
       paymentModel: link.paymentModel,
       cplRate: link.cplRate,
+      country: link.country,
       clicks: ts?.clicks ?? 0,
       spend,
       impressions: ts?.impressions ?? 0,

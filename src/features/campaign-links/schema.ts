@@ -24,6 +24,11 @@ export const campaignLinkSchema = z
       .string()
       .transform((v) => (v.trim() === "" ? null : v.trim()))
       .nullable(),
+    country: z
+      .string()
+      .transform((v) => (v.trim() === "" ? null : v.trim().toUpperCase()))
+      .nullable()
+      .optional(),
   })
   .refine(
     (data) => {

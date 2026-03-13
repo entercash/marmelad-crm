@@ -46,6 +46,7 @@ export async function createCampaignLink(
     keitaroCampaignId,
     paymentModel,
     cplRate,
+    country,
   } = parsed.data;
 
   try {
@@ -59,6 +60,7 @@ export async function createCampaignLink(
           paymentModel === "CPL" && cplRate
             ? new Prisma.Decimal(cplRate)
             : null,
+        country: country ?? null,
       },
     });
 

@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { createCampaignLink } from "../actions";
 import { PAYMENT_MODELS, PAYMENT_MODEL_LABELS } from "../schema";
 import type { TaboolaCampaignOption, KeitaroCampaignOption } from "../queries";
+import type { CountryOption } from "@/features/publishers/queries";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 interface Props {
   taboolaCampaigns: TaboolaCampaignOption[];
   keitaroCampaigns: KeitaroCampaignOption[];
+  countries: CountryOption[];
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -26,6 +28,7 @@ const selectClass =
 export function CampaignLinkForm({
   taboolaCampaigns,
   keitaroCampaigns,
+  countries,
   onSuccess,
   onCancel,
 }: Props) {
@@ -142,6 +145,26 @@ export function CampaignLinkForm({
         </select>
         {fe("paymentModel") && (
           <p className="text-xs text-red-400">{fe("paymentModel")}</p>
+        )}
+      </div>
+
+      {/* Country (GEO) */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Country (GEO)</Label>
+        <select
+          name="country"
+          className={selectClass}
+          defaultValue=""
+        >
+          <option value="">— Not set —</option>
+          {countries.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name} ({c.code})
+            </option>
+          ))}
+        </select>
+        {fe("country") && (
+          <p className="text-xs text-red-400">{fe("country")}</p>
         )}
       </div>
 

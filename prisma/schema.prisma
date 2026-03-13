@@ -920,6 +920,7 @@ model CampaignLink {
   keitaroCampaignId         String       // FK to KeitaroCampaign.id
   paymentModel              PaymentModel
   cplRate                   Decimal?     @db.Decimal(12, 4) // USD per lead (CPL only)
+  country                   String?      // ISO alpha-2 GEO code (e.g. "GB", "US")
 
   keitaroCampaign KeitaroCampaign @relation(fields: [keitaroCampaignId], references: [id])
 

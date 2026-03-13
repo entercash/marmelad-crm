@@ -11,10 +11,13 @@ import { DateRangeFilter }  from "@/components/shared/date-range-filter";
 import { PublisherFilters } from "./publisher-filters";
 import {
   getPublisherStats,
+  getPublisherDailyTrends,
   getDistinctCountries,
   type PublisherStatsRow,
+  type SiteTrends,
 } from "@/features/publishers/queries";
 import { parseDateFilter } from "@/lib/date";
+import { Sparkline, roiTrendColor, botTrendColor } from "@/components/ui/sparkline";
 
 export const metadata = { title: "Publishers" };
 
@@ -55,12 +58,19 @@ export default async function PublishersPage({
     total: 0,
   };
   let countries: { code: string; name: string }[] = [];
+  let trends = new Map<string, SiteTrends>();
 
   try {
     [stats, countries] = await Promise.all([
       getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to, linkedOnly }),
       getDistinctCountries(),
     ]);
+
+    // Fetch sparkline trends for sites on this page (7-day window, independent of date filter)
+    if (stats.rows.length > 0) {
+      const siteIds = stats.rows.map((r) => r.siteExternalId);
+      trends = await getPublisherDailyTrends(siteIds);
+    }
   } catch (err) {
     console.error("[PublishersPage] Failed to fetch data:", err);
   }
@@ -137,6 +147,8 @@ export default async function PublishersPage({
                   <th className="px-4 py-3 text-right">Revenue</th>
                   <th className="px-4 py-3 text-right">Profit</th>
                   <th className="px-4 py-3 text-right">ROI</th>
+                  <th className="px-4 py-3 text-center">ROI Trend</th>
+                  <th className="px-4 py-3 text-center">Bot% Trend</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.05]">
@@ -217,6 +229,24 @@ export default async function PublishersPage({
                       >
                         {fmtPct(row.roi)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const t = trends.get(row.siteExternalId);
+                        if (!t || t.roiTrend.length < 2) return <span className="text-slate-500">—</span>;
+                        const color = roiTrendColor(t.roiTrend);
+                        const last = t.roiTrend[t.roiTrend.length - 1];
+                        return <Sparkline data={t.roiTrend} color={color} label={`${last > 0 ? "+" : ""}${last.toFixed(0)}%`} />;
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const t = trends.get(row.siteExternalId);
+                        if (!t || t.botTrend.length < 2) return <span className="text-slate-500">—</span>;
+                        const last = t.botTrend[t.botTrend.length - 1];
+                        const color = botTrendColor(last);
+                        return <Sparkline data={t.botTrend} color={color} label={`${last.toFixed(0)}%`} />;
+                      })()}
                     </td>
                   </tr>
                 ))}

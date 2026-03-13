@@ -14,7 +14,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
-import { CRM_TIMEZONE, todayCrm } from "@/lib/date";
+import { CRM_TIMEZONE, todayCrm, toApiDate } from "@/lib/date";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -487,4 +487,272 @@ export async function getPublisherStats(params: {
   });
 
   return { rows, total };
+}
+
+// ─── Daily trends for sparklines ─────────────────────────────────────────────
+
+export type SiteTrends = {
+  roiTrend: number[];   // daily ROI values (7 points)
+  botTrend: number[];   // daily bot% values (7 points)
+};
+
+/**
+ * Fetch last-7-day daily ROI and bot% per site for sparkline rendering.
+ * Runs independently from the main stats query (fixed 7-day window).
+ *
+ * Returns Map<siteExternalId, SiteTrends>.
+ */
+export async function getPublisherDailyTrends(
+  siteExternalIds: string[],
+): Promise<Map<string, SiteTrends>> {
+  if (siteExternalIds.length === 0) return new Map();
+
+  // 7-day window: today - 6 days → today
+  const today = todayCrm();
+  const todayDate = new Date(`${today}T00:00:00.000Z`);
+  const fromDate = new Date(todayDate);
+  fromDate.setUTCDate(fromDate.getUTCDate() - 6);
+  const dateFrom = toApiDate(fromDate);
+  const dateTo = today;
+
+  // Build ordered list of 7 days for consistent array indexing
+  const dayLabels: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(fromDate);
+    d.setUTCDate(d.getUTCDate() + i);
+    dayLabels.push(toApiDate(d));
+  }
+
+  // 1. Taboola CSV: daily spend + clicks per site (with commission multiplier)
+  type RawDailyRow = {
+    day: Date;
+    siteExternalId: string;
+    clicks: bigint;
+    spend: unknown;
+  };
+
+  const dailySpend = await prisma.$queryRaw<RawDailyRow[]>(
+    Prisma.sql`
+      WITH acct_mult AS (
+        SELECT DISTINCT ON (a."externalId")
+          a."externalId",
+          (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
+          (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100)
+          as multiplier
+        FROM "accounts" a
+        LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
+        WHERE a."externalId" IS NOT NULL
+        ORDER BY a."externalId"
+      )
+      SELECT
+        t."day",
+        t."siteExternalId",
+        COALESCE(SUM(t."clicks"), 0) as "clicks",
+        COALESCE(SUM(t."spentUsd" * COALESCE(am.multiplier, 1)), 0) as "spend"
+      FROM "taboola_csv_rows" t
+      LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
+      WHERE t."siteExternalId" IN (${Prisma.join(siteExternalIds)})
+        AND t."day" >= ${dateFrom}::date
+        AND t."day" <= ${dateTo}::date
+      GROUP BY t."day", t."siteExternalId"
+    `,
+  );
+
+  // Index: Map<siteId, Map<day, { spend, clicks }>>
+  const spendByDay = new Map<string, Map<string, { spend: number; clicks: number }>>();
+  for (const r of dailySpend) {
+    const day = r.day instanceof Date ? toApiDate(r.day) : String(r.day).slice(0, 10);
+    const siteId = r.siteExternalId;
+    if (!spendByDay.has(siteId)) spendByDay.set(siteId, new Map());
+    spendByDay.get(siteId)!.set(day, {
+      spend: Number(r.spend),
+      clicks: Number(r.clicks),
+    });
+  }
+
+  // 2. Keitaro: daily revenue per site
+  //    Map<siteId, Map<day, { leads, revenue }>>
+  const revenueByDay = new Map<string, Map<string, { leads: number; revenue: number }>>();
+
+  try {
+    const settings = await getKeitaroSettings();
+    if (settings.apiUrl && settings.apiKey) {
+      // Get campaign links for revenue calculation
+      const links = await prisma.campaignLink.findMany({
+        select: {
+          taboolaCampaignExternalId: true,
+          paymentModel: true,
+          cplRate: true,
+          keitaroCampaign: { select: { externalId: true } },
+        },
+      });
+
+      const keitaroIds = Array.from(new Set(links.map((l) => l.keitaroCampaign.externalId)));
+      if (keitaroIds.length > 0) {
+        const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
+        const report = await client.buildReport({
+          range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
+          grouping: ["day", "campaign_id", "sub_id_1"],
+          metrics: ["conversions", "revenue"],
+          limit: 50_000,
+          offset: 0,
+        });
+
+        // Build lookup: taboolaCampaignExternalId → link info
+        const linkByCampaign = new Map(
+          links.map((l) => [l.taboolaCampaignExternalId, l]),
+        );
+
+        // Also need site → campaign mapping for this date range
+        const siteCampaigns = await getSiteCampaignAssociations(siteExternalIds, undefined, dateFrom, dateTo);
+        // Invert: keitaroCampaignId → { paymentModel, cplRate } per taboolaCampaign
+        const keitaroToLink = new Map<number, typeof links[number][]>();
+        for (const l of links) {
+          const kid = l.keitaroCampaign.externalId;
+          if (!keitaroToLink.has(kid)) keitaroToLink.set(kid, []);
+          keitaroToLink.get(kid)!.push(l);
+        }
+
+        for (const row of report.rows) {
+          const campId = Number(row.campaign_id);
+          const subId = String(row.sub_id_1 ?? "").trim();
+          const day = String(row.day ?? "").trim();
+          if (!campId || !subId || !day) continue;
+          if (!siteExternalIds.includes(subId)) continue;
+
+          // Find link for this keitaro campaign
+          const matchingLinks = keitaroToLink.get(campId);
+          if (!matchingLinks?.length) continue;
+          const link = matchingLinks[0]; // use first match
+
+          const leads = Number(row.conversions ?? 0);
+          let revenue = 0;
+          if (link.paymentModel === "CPL" && link.cplRate) {
+            revenue = leads * Number(link.cplRate);
+          } else if (link.paymentModel === "CPA") {
+            revenue = Number(row.revenue ?? 0);
+          }
+
+          if (!revenueByDay.has(subId)) revenueByDay.set(subId, new Map());
+          const dayMap = revenueByDay.get(subId)!;
+          const existing = dayMap.get(day) ?? { leads: 0, revenue: 0 };
+          dayMap.set(day, {
+            leads: existing.leads + leads,
+            revenue: existing.revenue + revenue,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[getPublisherDailyTrends] Keitaro error:", err);
+  }
+
+  // 3. Adspect: daily bot% per site
+  //    Map<siteId, Map<day, botPercent>>
+  const botByDay = new Map<string, Map<string, number>>();
+
+  try {
+    const linksWithStreams = await prisma.campaignLink.findMany({
+      where: { adspectStreamId: { not: null } },
+      select: { adspectStreamId: true },
+    });
+    const streamIds = Array.from(new Set(
+      linksWithStreams.map((l) => l.adspectStreamId!).filter(Boolean),
+    ));
+
+    if (streamIds.length > 0) {
+      const { getAdspectSettings } = await import("@/features/integration-settings/queries");
+      const adSettings = await getAdspectSettings();
+      if (adSettings.apiKey) {
+        // Check Redis cache
+        const cacheKey = `adspect:daily-funnel:${streamIds.sort().join(",")}:${dateFrom}:${dateTo}`;
+        let redisClient: Awaited<typeof import("@/lib/redis")>["redis"] | null = null;
+        let cached: string | null = null;
+
+        try {
+          const { redis } = await import("@/lib/redis");
+          redisClient = redis;
+          cached = await Promise.race([
+            redis.get(cacheKey),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+          ]);
+        } catch { /* Redis unavailable */ }
+
+        if (cached) {
+          const entries: [string, [string, number][]][] = JSON.parse(cached);
+          for (const [siteId, dayEntries] of entries) {
+            botByDay.set(siteId, new Map(dayEntries));
+          }
+        } else {
+          const { AdspectClient } = await import("@/integrations/adspect/client");
+          const adClient = new AdspectClient({ apiKey: adSettings.apiKey });
+          const rows = await adClient.getFunnelBySiteAndDate({ streamIds, dateFrom, dateTo });
+
+          for (const row of rows) {
+            if (!row.sub_id) continue;
+            const botPct = row.clicks > 0 ? (1 - row.quality) * 100 : 0;
+            if (!botByDay.has(row.sub_id)) botByDay.set(row.sub_id, new Map());
+            botByDay.get(row.sub_id)!.set(row.date, Math.round(botPct * 10) / 10);
+          }
+
+          // Cache result
+          if (redisClient) {
+            const serializable = Array.from(botByDay.entries()).map(
+              ([sid, dm]) => [sid, Array.from(dm.entries())] as [string, [string, number][]]
+            );
+            Promise.race([
+              redisClient.set(cacheKey, JSON.stringify(serializable), "EX", ADSPECT_CACHE_TTL),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+            ]).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[getPublisherDailyTrends] Adspect error:", err);
+  }
+
+  // 4. Merge into SiteTrends per siteExternalId
+  const result = new Map<string, SiteTrends>();
+
+  for (const siteId of siteExternalIds) {
+    const spendDays = spendByDay.get(siteId);
+    const revDays = revenueByDay.get(siteId);
+    const botDays = botByDay.get(siteId);
+
+    // ROI trend: need both spend and revenue data
+    const roiTrend: number[] = [];
+    if (spendDays && revDays) {
+      for (const day of dayLabels) {
+        const s = spendDays.get(day);
+        const r = revDays.get(day);
+        if (s && s.spend > 0 && r) {
+          roiTrend.push(Math.round(((r.revenue - s.spend) / s.spend) * 1000) / 10);
+        } else if (s && s.spend > 0) {
+          roiTrend.push(-100); // spend but no revenue = -100% ROI
+        }
+        // Skip days with no spend (don't push zero — would distort the trend)
+      }
+    }
+
+    // Bot% trend
+    const botTrend: number[] = [];
+    if (botDays) {
+      for (const day of dayLabels) {
+        const bp = botDays.get(day);
+        if (bp !== undefined) {
+          botTrend.push(bp);
+        }
+      }
+    }
+
+    if (roiTrend.length >= 2 || botTrend.length >= 2) {
+      result.set(siteId, {
+        roiTrend: roiTrend.length >= 2 ? roiTrend : [],
+        botTrend: botTrend.length >= 2 ? botTrend : [],
+      });
+    }
+  }
+
+  return result;
 }

@@ -34,3 +34,14 @@ export interface AdspectFunnelParams {
   dateFrom: string;      // YYYY-MM-DD
   dateTo: string;        // YYYY-MM-DD
 }
+
+// ─── Daily Funnel Report ───────────────────────────────────────────────────
+
+/** Parsed daily funnel row (grouped by date + sub_id) */
+export interface AdspectDailyFunnelRow {
+  date: string;          // YYYY-MM-DD
+  sub_id: string;        // Taboola site_id
+  clicks: number;
+  money_hits: number;
+  quality: number;       // 0-1 ratio
+}

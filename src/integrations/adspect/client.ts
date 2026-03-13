@@ -17,6 +17,7 @@ import { AdspectError } from "@/lib/errors";
 import type {
   AdspectStream,
   AdspectFunnelRow,
+  AdspectDailyFunnelRow,
   AdspectFunnelParams,
 } from "./types";
 
@@ -135,6 +136,45 @@ export class AdspectClient {
       clicks:     Number(row[1] ?? 0),
       money_hits: Number(row[2] ?? 0),
       quality:    Number(row[3] ?? 0),
+    }));
+  }
+
+  // ── Daily Funnel Report ─────────────────────────────────────────────────
+
+  /**
+   * Fetch funnel report grouped by date + sub_id for sparkline trends.
+   *
+   * group_by: [date, sub_id]
+   * metrics:  [clicks, money_hits, quality]
+   *
+   * Each raw row: [date, sub_id, clicks, money_hits, quality]
+   *                idx 0  idx 1   idx 2   idx 3      idx 4
+   */
+  async getFunnelBySiteAndDate(params: AdspectFunnelParams): Promise<AdspectDailyFunnelRow[]> {
+    const searchParams = new URLSearchParams();
+
+    searchParams.append("group_by[]", "date");
+    searchParams.append("group_by[]", "sub_id");
+
+    for (const m of ["clicks", "money_hits", "quality"]) {
+      searchParams.append("metrics[]", m);
+    }
+
+    for (const sid of params.streamIds) {
+      searchParams.append("stream_id[]", sid);
+    }
+
+    searchParams.append("date_from", params.dateFrom);
+    searchParams.append("date_to", params.dateTo);
+
+    const raw = await this.get<unknown[][]>("/reports/funnel", searchParams);
+
+    return raw.map((row) => ({
+      date:       String(row[0] ?? ""),
+      sub_id:     String(row[1] ?? ""),
+      clicks:     Number(row[2] ?? 0),
+      money_hits: Number(row[3] ?? 0),
+      quality:    Number(row[4] ?? 0),
     }));
   }
 }

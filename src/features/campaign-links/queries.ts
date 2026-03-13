@@ -149,7 +149,7 @@ async function getKeitaroStatsForCampaigns(
       apiKey: settings.apiKey,
     });
 
-    const report = await client.buildReport({
+    const requestBody: import("@/integrations/keitaro/types").KeitaroReportRequest = {
       range: { from: dateFrom, to: dateTo, timezone: "UTC" },
       grouping: ["campaign_id"],
       metrics: ["clicks", "conversions", "sales", "revenue"],
@@ -162,7 +162,11 @@ async function getKeitaroStatsForCampaigns(
       ],
       limit: 10_000,
       offset: 0,
-    });
+    };
+    console.log("[getKeitaroStats] Request:", JSON.stringify(requestBody));
+
+    const report = await client.buildReport(requestBody);
+    console.log("[getKeitaroStats] Response rows:", JSON.stringify(report.rows));
 
     const map = new Map<number, { clicks: number; leads: number; sales: number; revenue: number }>();
     for (const row of report.rows) {
@@ -265,7 +269,11 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
     const maxDay: Date = globalMaxDay;
     const from = minDay.toISOString().slice(0, 10);
     const to = maxDay.toISOString().slice(0, 10);
+    console.log("[getCampaignLinkStats] Keitaro IDs:", keitaroIds, "dateRange:", from, "→", to);
     keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, from, to);
+    console.log("[getCampaignLinkStats] keitaroStats:", keitaroStats ? `${keitaroStats.size} entries` : "null");
+  } else {
+    console.log("[getCampaignLinkStats] No date range — skipping Keitaro API call");
   }
 
   // Merge

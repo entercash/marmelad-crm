@@ -15,7 +15,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getAccounts } from "@/features/ad-accounts/queries";
-import { getCampaignLinkStats } from "@/features/campaign-links/queries";
+import { getCampaignLinkStats, getCampaignLinkDailyRevenue } from "@/features/campaign-links/queries";
 import { getExpenseSummary } from "@/features/expenses/queries";
 import { getSeoTotalRevenue } from "@/features/seo/queries";
 import { getBalanceSummaries } from "@/features/balances/queries";
@@ -220,6 +220,9 @@ export async function getDashboardTimeSeries(
       `,
     );
 
+    // 4. Daily campaign link revenue (Keitaro API)
+    const campaignLinkRevenue = await getCampaignLinkDailyRevenue(dateFrom, dateTo);
+
     // Merge all sources by date
     const map = new Map<string, { spend: number; revenue: number }>();
 
@@ -243,6 +246,13 @@ export async function getDashboardTimeSeries(
       entry.revenue += Number(r.revenue);
       map.set(d, entry);
     }
+
+    // Campaign link revenue from Keitaro
+    campaignLinkRevenue.forEach((rev, d) => {
+      const entry = map.get(d) ?? { spend: 0, revenue: 0 };
+      entry.revenue += rev;
+      map.set(d, entry);
+    });
 
     // Sort by date
     return Array.from(map.entries())

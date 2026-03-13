@@ -239,6 +239,76 @@ async function getCommissionMultipliers(
   return result;
 }
 
+// ─── Daily revenue for dashboard chart ──────────────────────────────────────
+
+/**
+ * Get daily revenue from campaign links (Keitaro API grouped by day).
+ * Returns a Map of "YYYY-MM-DD" → total revenue for that day.
+ */
+export async function getCampaignLinkDailyRevenue(
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+
+  try {
+    const links = await getCampaignLinks();
+    if (links.length === 0) return result;
+
+    const settings = await getKeitaroSettings();
+    if (!settings.apiUrl || !settings.apiKey) return result;
+
+    const client = new KeitaroClient({
+      apiUrl: settings.apiUrl,
+      apiKey: settings.apiKey,
+    });
+
+    const from = dateFrom ?? "2024-01-01";
+    const to = dateTo ?? todayCrm();
+
+    const report = await client.buildReport({
+      range: { from, to, timezone: CRM_TIMEZONE },
+      grouping: ["campaign_id", "day"],
+      metrics: ["conversions", "sales", "revenue"],
+      limit: 50_000,
+      offset: 0,
+    });
+
+    // Build a quick lookup: keitaroExternalId → { paymentModel, cplRate }
+    const linkMap = new Map<number, { paymentModel: string; cplRate: number | null }>();
+    for (const l of links) {
+      linkMap.set(l.keitaroCampaignExternalId, {
+        paymentModel: l.paymentModel,
+        cplRate: l.cplRate,
+      });
+    }
+
+    for (const row of report.rows) {
+      const campId = Number(row.campaign_id);
+      const day = row.day as string | undefined;
+      if (!campId || !day) continue;
+
+      const link = linkMap.get(campId);
+      if (!link) continue;
+
+      let revenue = 0;
+      if (link.paymentModel === "CPL" && link.cplRate !== null) {
+        revenue = Number(row.conversions ?? 0) * link.cplRate;
+      } else if (link.paymentModel === "CPA") {
+        revenue = Number(row.revenue ?? 0);
+      }
+
+      if (revenue > 0) {
+        result.set(day, (result.get(day) ?? 0) + revenue);
+      }
+    }
+  } catch (err) {
+    console.error("[getCampaignLinkDailyRevenue] Error:", err);
+  }
+
+  return result;
+}
+
 // ─── Combined stats (main page query) ───────────────────────────────────────
 
 /** Get all campaign links with merged Taboola + Keitaro stats. */

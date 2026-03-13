@@ -149,39 +149,21 @@ async function getKeitaroStatsForCampaigns(
       apiKey: settings.apiKey,
     });
 
-    const requestBody: import("@/integrations/keitaro/types").KeitaroReportRequest = {
+    // Fetch all campaigns (IN_LIST filter doesn't work for campaign_id in Keitaro),
+    // then filter results in code.
+    const report = await client.buildReport({
       range: { from: dateFrom, to: dateTo, timezone: "UTC" },
       grouping: ["campaign_id"],
       metrics: ["clicks", "conversions", "sales", "revenue"],
-      filters: [
-        {
-          name: "campaign_id",
-          operator: "IN_LIST",
-          values: keitaroExternalIds.map(String),
-        },
-      ],
       limit: 10_000,
       offset: 0,
-    };
-    console.log("[getKeitaroStats] Request:", JSON.stringify(requestBody));
-
-    const report = await client.buildReport(requestBody);
-    console.log("[getKeitaroStats] FULL response:", JSON.stringify(report));
-
-    // Also try WITHOUT filter to see what campaigns exist
-    const debugReport = await client.buildReport({
-      range: { from: dateFrom, to: dateTo, timezone: "UTC" },
-      grouping: ["campaign_id"],
-      metrics: ["clicks", "conversions", "sales", "revenue"],
-      limit: 20,
-      offset: 0,
     });
-    console.log("[getKeitaroStats] ALL campaigns (no filter):", JSON.stringify(debugReport.rows?.slice(0, 5) ?? debugReport));
 
+    const idSet = new Set(keitaroExternalIds);
     const map = new Map<number, { clicks: number; leads: number; sales: number; revenue: number }>();
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      if (!campId) continue;
+      if (!campId || !idSet.has(campId)) continue;
       map.set(campId, {
         clicks: Number(row.clicks ?? 0),
         leads: Number(row.conversions ?? 0),

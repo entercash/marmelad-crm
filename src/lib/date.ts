@@ -177,6 +177,29 @@ export function parseDateFilter(params: {
   return null;
 }
 
+// ─── Previous Period ─────────────────────────────────────────────────────────
+
+/**
+ * Compute the previous period of the same length for delta comparison.
+ * E.g. if current = Mar 7–Mar 13 (7 days), previous = Feb 28–Mar 6.
+ * Returns null for "all time" (no dates).
+ */
+export function computePreviousPeriod(
+  from?: string,
+  to?: string,
+): DateRange {
+  if (!from || !to) return null;
+  const fromDate = new Date(`${from}T00:00:00.000Z`);
+  const toDate = new Date(`${to}T00:00:00.000Z`);
+  const daysDiff =
+    Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
+  const prevTo = new Date(fromDate);
+  prevTo.setUTCDate(prevTo.getUTCDate() - 1);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setUTCDate(prevFrom.getUTCDate() - daysDiff + 1);
+  return { from: toApiDate(prevFrom), to: toApiDate(prevTo) };
+}
+
 // ─── Clamp ──────────────────────────────────────────────────────────────────
 
 /**

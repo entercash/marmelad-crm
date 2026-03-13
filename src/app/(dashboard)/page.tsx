@@ -5,33 +5,34 @@ import {
   ArrowDownLeft,
   TrendingUp,
   Activity,
+  Target,
+  Crosshair,
 } from "lucide-react";
 
-import { PageHeader }         from "@/components/shared/page-header";
-import { StatCard }           from "@/components/shared/stat-card";
-import { DateRangeFilter }    from "@/components/shared/date-range-filter";
-import { getDashboardSummary } from "@/features/dashboard/queries";
-import { parseDateFilter }     from "@/lib/date";
+import { PageHeader }      from "@/components/shared/page-header";
+import { StatCard }        from "@/components/shared/stat-card";
+import { DeltaBadge }      from "@/components/shared/delta-badge";
+import { DateRangeFilter } from "@/components/shared/date-range-filter";
+import { parseDateFilter, computePreviousPeriod } from "@/lib/date";
+import { formatCurrency, formatCompact } from "@/lib/utils";
+
+import {
+  getDashboardSummary,
+  getDashboardTimeSeries,
+  getTopAgenciesBySpend,
+  getSpendByAccount,
+  getDashboardAlerts,
+} from "@/features/dashboard/queries";
+
+import { SpendRevenueChart }    from "@/features/dashboard/components/spend-revenue-chart";
+import { SpendByAccountChart }  from "@/features/dashboard/components/spend-by-account-chart";
+import { TopAgencies }          from "@/features/dashboard/components/top-agencies";
+import { AlertsPanel }          from "@/features/dashboard/components/alerts-panel";
 
 export const metadata = { title: "Dashboard" };
-
-// Revalidate every 60 s so stat cards stay reasonably fresh without a full reload.
 export const revalidate = 60;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatUsd(value: number): string {
-  const sign = value < 0 ? "−" : "";
-  return (
-    sign +
-    new Intl.NumberFormat("en-US", {
-      style:                 "currency",
-      currency:              "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.abs(value))
-  );
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatRoi(value: number | null): string {
   if (value === null) return "—";
@@ -39,7 +40,17 @@ function formatRoi(value: number | null): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function formatUsd(value: number): string {
+  const sign = value < 0 ? "−" : "";
+  return sign + formatCurrency(Math.abs(value));
+}
+
+function delta(current: number, previous: number): number | null {
+  if (previous === 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 type SearchParams = { period?: string; from?: string; to?: string };
 
@@ -49,19 +60,36 @@ export default async function DashboardPage({
   searchParams: SearchParams;
 }) {
   const dateRange = parseDateFilter(searchParams);
-  let spent = 0, received = 0, roi: number | null = null, result = 0;
+  const from = dateRange?.from;
+  const to = dateRange?.to;
+  const prevRange = computePreviousPeriod(from, to);
 
-  try {
-    const summary = await getDashboardSummary(dateRange?.from, dateRange?.to);
-    spent    = summary.spent;
-    received = summary.received;
-    roi      = summary.roi;
-    result   = summary.result;
-  } catch (err) {
-    console.error("[DashboardPage] Failed to load dashboard:", err);
-  }
+  // Parallel fetch all data
+  const [current, previous, timeSeries, topAgencies, accountSpend, alerts] =
+    await Promise.all([
+      getDashboardSummary(from, to),
+      prevRange
+        ? getDashboardSummary(prevRange.from, prevRange.to)
+        : Promise.resolve(null),
+      getDashboardTimeSeries(from, to),
+      getTopAgenciesBySpend(from, to),
+      getSpendByAccount(from, to),
+      getDashboardAlerts(),
+    ]);
 
-  const hasData = spent > 0 || received > 0;
+  // Compute deltas
+  const d = {
+    spent:       previous ? delta(current.spent, previous.spent) : null,
+    received:    previous ? delta(current.received, previous.received) : null,
+    result:      previous ? delta(current.result, previous.result) : null,
+    roi:         previous && previous.roi !== null && current.roi !== null
+                   ? current.roi - previous.roi
+                   : null,
+    conversions: previous ? delta(current.conversions, previous.conversions) : null,
+    cpa:         previous && previous.cpa && current.cpa
+                   ? delta(current.cpa, previous.cpa)
+                   : null,
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -72,59 +100,88 @@ export default async function DashboardPage({
 
       <DateRangeFilter basePath="/" />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* 1. Spent */}
+      {/* ── KPI Cards ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard
-          label="Spent"
-          value={formatUsd(spent)}
+          label="Spend"
+          value={formatUsd(current.spent)}
           icon={DollarSign}
           iconClassName="text-red-400"
-          description={
-            hasData
-              ? "Ad spend + manual expenses"
-              : "No spend recorded yet"
-          }
+          valueClassName="text-xl font-bold"
+          sub={<DeltaBadge value={d.spent} invertPolarity />}
         />
-
-        {/* 2. Received */}
         <StatCard
-          label="Received"
-          value={formatUsd(received)}
+          label="Revenue"
+          value={formatUsd(current.received)}
           icon={ArrowDownLeft}
           iconClassName="text-emerald-400"
-          description={
-            hasData
-              ? "Net conversion revenue"
-              : "No revenue recorded yet"
-          }
+          valueClassName="text-xl font-bold"
+          sub={<DeltaBadge value={d.received} />}
         />
-
-        {/* 3. ROI */}
+        <StatCard
+          label="Profit"
+          value={formatUsd(current.result)}
+          icon={Activity}
+          iconClassName={current.result >= 0 ? "text-emerald-400" : "text-red-400"}
+          valueClassName="text-xl font-bold"
+          sub={<DeltaBadge value={d.result} />}
+        />
         <StatCard
           label="ROI"
-          value={formatRoi(roi)}
+          value={formatRoi(current.roi)}
           icon={TrendingUp}
           iconClassName="text-blue-400"
-          description={
-            roi !== null
-              ? "Return on investment"
-              : "Needs spend data to calculate"
+          valueClassName="text-xl font-bold"
+          sub={
+            d.roi !== null ? (
+              <DeltaBadge value={d.roi} />
+            ) : undefined
           }
         />
-
-        {/* 4. Final Result */}
         <StatCard
-          label="Result"
-          value={formatUsd(result)}
-          icon={Activity}
-          iconClassName={result >= 0 ? "text-emerald-400" : "text-red-400"}
-          description={
-            hasData
-              ? "Received minus spent"
-              : "No data yet"
-          }
+          label="Conversions"
+          value={formatCompact(current.conversions)}
+          icon={Target}
+          iconClassName="text-purple-400"
+          valueClassName="text-xl font-bold"
+          sub={<DeltaBadge value={d.conversions} />}
+        />
+        <StatCard
+          label="CPA"
+          value={current.cpa !== null ? formatCurrency(current.cpa) : "—"}
+          icon={Crosshair}
+          iconClassName="text-orange-400"
+          valueClassName="text-xl font-bold"
+          sub={<DeltaBadge value={d.cpa} invertPolarity />}
         />
       </div>
+
+      {/* ── Spend vs Revenue Chart ─────────────────────────────────────── */}
+      <div className="glass p-5">
+        <h3 className="mb-4 text-sm font-semibold text-slate-400">
+          Spend vs Revenue
+        </h3>
+        <SpendRevenueChart data={timeSeries} />
+      </div>
+
+      {/* ── Two-column: Agencies + Account Spend ──────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="glass p-5">
+          <h3 className="mb-4 text-sm font-semibold text-slate-400">
+            Top Agencies by Spend
+          </h3>
+          <TopAgencies agencies={topAgencies} />
+        </div>
+        <div className="glass p-5">
+          <h3 className="mb-4 text-sm font-semibold text-slate-400">
+            Spend by Account
+          </h3>
+          <SpendByAccountChart data={accountSpend} />
+        </div>
+      </div>
+
+      {/* ── Alerts ─────────────────────────────────────────────────────── */}
+      <AlertsPanel alerts={alerts} />
     </div>
   );
 }

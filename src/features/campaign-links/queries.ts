@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
@@ -181,6 +182,54 @@ async function getKeitaroStatsForCampaigns(
   }
 }
 
+/** Get commission multiplier per campaign via CSV account → agency chain. */
+async function getCommissionMultipliers(
+  campaignExternalIds: string[],
+): Promise<Map<string, number>> {
+  if (campaignExternalIds.length === 0) return new Map();
+
+  // 1. Get accountExternalId for each campaign
+  const campAcctRows = await prisma.$queryRaw<
+    { campaignExternalId: string; accountExternalId: string }[]
+  >`
+    SELECT DISTINCT ON ("campaignExternalId")
+      "campaignExternalId", "accountExternalId"
+    FROM "taboola_csv_rows"
+    WHERE "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
+    ORDER BY "campaignExternalId"
+  `;
+
+  // 2. Get accounts with agency commissions
+  const acctExtIdSet = new Set(campAcctRows.map((r) => r.accountExternalId));
+  const acctExtIds = Array.from(acctExtIdSet);
+
+  const accounts = await prisma.account.findMany({
+    where: { externalId: { in: acctExtIds } },
+    select: {
+      externalId: true,
+      agency: {
+        select: { commissionPercent: true, cryptoPaymentPercent: true },
+      },
+    },
+  });
+
+  // 3. Build account → multiplier map
+  const acctMultMap = new Map<string, number>();
+  for (const a of accounts) {
+    if (!a.externalId) continue;
+    const commPct = a.agency?.commissionPercent ? Number(a.agency.commissionPercent) : 0;
+    const cryptoPct = a.agency?.cryptoPaymentPercent ? Number(a.agency.cryptoPaymentPercent) : 0;
+    acctMultMap.set(a.externalId, (1 + commPct / 100) * (1 + cryptoPct / 100));
+  }
+
+  // 4. Map campaign → multiplier
+  const result = new Map<string, number>();
+  for (const r of campAcctRows) {
+    result.set(r.campaignExternalId, acctMultMap.get(r.accountExternalId) ?? 1);
+  }
+  return result;
+}
+
 // ─── Combined stats (main page query) ───────────────────────────────────────
 
 /** Get all campaign links with merged Taboola + Keitaro stats. */
@@ -188,10 +237,13 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
   const links = await getCampaignLinks();
   if (links.length === 0) return [];
 
-  // Taboola stats
+  // Taboola stats + commission multipliers
   const taboolaIdSet = new Set(links.map((l) => l.taboolaCampaignExternalId));
   const taboolaIds = Array.from(taboolaIdSet);
-  const taboolaStats = await getTaboolaStatsByCampaign(taboolaIds);
+  const [taboolaStats, commMultipliers] = await Promise.all([
+    getTaboolaStatsByCampaign(taboolaIds),
+    getCommissionMultipliers(taboolaIds),
+  ]);
 
   // Determine global date range
   let globalMinDay: Date | null = null;
@@ -221,7 +273,9 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
     const ts = taboolaStats.get(link.taboolaCampaignExternalId);
     const ks = keitaroStats?.get(link.keitaroCampaignExternalId) ?? null;
 
-    const spend = ts?.spend ?? 0;
+    const rawSpend = ts?.spend ?? 0;
+    const multiplier = commMultipliers.get(link.taboolaCampaignExternalId) ?? 1;
+    const spend = rawSpend * multiplier;
     const leads = ks?.leads ?? null;
     const sales = ks?.sales ?? null;
     const keitaroRevenue = ks?.revenue ?? null;

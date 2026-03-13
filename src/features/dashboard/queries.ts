@@ -12,6 +12,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getAccounts } from "@/features/ad-accounts/queries";
+import { getCampaignLinkStats } from "@/features/campaign-links/queries";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,11 +37,12 @@ const EMPTY_SUMMARY: DashboardSummary = {
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   try {
-    const [accounts, revenueAgg] = await Promise.all([
+    const [accounts, revenueAgg, campaignStats] = await Promise.all([
       getAccounts(),
       prisma.conversionStatsDaily.aggregate({
         _sum: { netRevenue: true },
       }),
+      getCampaignLinkStats(),
     ]);
 
     // Per account: accountCost × (1 + cryptoPct/100) + totalSpentUsd
@@ -52,7 +54,13 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       spent += accountCostWithCrypto + a.totalSpentUsd;
     }
 
-    const received = Number(revenueAgg._sum.netRevenue ?? 0);
+    // Revenue from ConversionStatsDaily + campaign link mappings
+    const conversionRevenue = Number(revenueAgg._sum.netRevenue ?? 0);
+    const campaignRevenue = campaignStats.reduce(
+      (sum, s) => sum + (s.revenue ?? 0),
+      0,
+    );
+    const received = conversionRevenue + campaignRevenue;
     const result   = received - spent;
     const roi      = spent > 0 ? ((received - spent) / spent) * 100 : null;
 

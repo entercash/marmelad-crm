@@ -109,6 +109,7 @@ export default async function CampaignsPage() {
                   <th className="px-4 py-3 text-right">Spend</th>
                   <th className="px-4 py-3 text-right">CPL</th>
                   <th className="px-4 py-3 text-right">Revenue</th>
+                  <th className="px-4 py-3 text-right">Profit</th>
                   <th className="px-4 py-3 text-right">ROI</th>
                   <th className="px-4 py-3">
                     <span className="sr-only">Actions</span>
@@ -153,6 +154,19 @@ export default async function CampaignsPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtUsd(row.revenue)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      <span
+                        className={
+                          row.profit !== null
+                            ? row.profit >= 0
+                              ? "text-emerald-400"
+                              : "text-red-400"
+                            : "text-slate-500"
+                        }
+                      >
+                        {fmtUsd(row.profit)}
+                      </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                       <span

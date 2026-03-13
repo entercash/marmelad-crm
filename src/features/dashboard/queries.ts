@@ -13,6 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import { getAccounts } from "@/features/ad-accounts/queries";
 import { getCampaignLinkStats } from "@/features/campaign-links/queries";
+import { getExpenseSummary } from "@/features/expenses/queries";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,12 +38,13 @@ const EMPTY_SUMMARY: DashboardSummary = {
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   try {
-    const [accounts, revenueAgg, campaignStats] = await Promise.all([
+    const [accounts, revenueAgg, campaignStats, expenseSummary] = await Promise.all([
       getAccounts(),
       prisma.conversionStatsDaily.aggregate({
         _sum: { netRevenue: true },
       }),
       getCampaignLinkStats(),
+      getExpenseSummary(),
     ]);
 
     // Per account: accountCost × (1 + cryptoPct/100) + totalSpentUsd
@@ -53,6 +55,9 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       const accountCostWithCrypto = accountCost * (1 + cryptoPct / 100);
       spent += accountCostWithCrypto + a.totalSpentUsd;
     }
+
+    // Add manual expenses
+    spent += expenseSummary.totalAmount;
 
     // Revenue from ConversionStatsDaily + campaign link mappings
     const conversionRevenue = Number(revenueAgg._sum.netRevenue ?? 0);

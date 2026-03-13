@@ -46,6 +46,7 @@ export type CampaignStatsRow = {
   // Computed
   cpl: number | null;
   revenue: number | null;
+  profit: number | null;
   roi: number | null;
 };
 
@@ -279,6 +280,9 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
       revenue = keitaroRevenue;
     }
 
+    // Profit = revenue - spend
+    const profit = revenue !== null ? revenue - spend : null;
+
     // ROI = (revenue - spend) / spend × 100
     const roi =
       revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null;
@@ -297,6 +301,7 @@ export async function getCampaignLinkStats(): Promise<CampaignStatsRow[]> {
       keitaroRevenue,
       cpl,
       revenue,
+      profit,
       roi,
     };
   });

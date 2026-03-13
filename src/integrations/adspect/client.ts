@@ -71,7 +71,6 @@ export class AdspectClient {
     }
 
     const text = await res.text();
-    console.log("[Adspect] Raw response (first 500 chars):", text.slice(0, 500));
     try {
       return JSON.parse(text) as T;
     } catch {

@@ -235,23 +235,16 @@ async function getAdspectStatsBySite(
     const streamIds = Array.from(new Set(
       linksWithStreams.map((l) => l.adspectStreamId!).filter(Boolean),
     ));
-    if (streamIds.length === 0) {
-      console.log("[Adspect] No CampaignLinks with adspectStreamId found");
-      return null;
-    }
+    if (streamIds.length === 0) return null;
 
     // 2. Check if Adspect is configured
     const { getAdspectSettings } = await import(
       "@/features/integration-settings/queries"
     );
     const settings = await getAdspectSettings();
-    if (!settings.apiKey) {
-      console.log("[Adspect] No API key configured");
-      return null;
-    }
+    if (!settings.apiKey) return null;
 
     // 3. Call Adspect funnel API
-    console.log("[Adspect] Fetching funnel for streams:", streamIds, "dates:", dateFrom ?? "2024-01-01", "-", dateTo ?? todayCrm());
     const { AdspectClient } = await import("@/integrations/adspect/client");
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const rows = await client.getFunnelBySite({
@@ -260,21 +253,18 @@ async function getAdspectStatsBySite(
       dateTo: dateTo ?? todayCrm(),
     });
 
-    console.log("[Adspect] Got", rows.length, "rows. Sample:", JSON.stringify(rows.slice(0, 3)));
-
     // 4. Build map keyed by sub_id (= site external ID)
     const map = new Map<string, { botPercent: number; adspectClicks: number }>();
     for (const row of rows) {
       if (!row.sub_id) continue;
       const totalClicks = row.clicks || 0;
-      // quality = % of money_hits (good traffic); bot% = 100 − quality
-      const botPct = totalClicks > 0 ? 100 - row.quality : 0;
+      // quality is 0–1 ratio (e.g. 0.52 = 52% good); bot% = (1 − quality) × 100
+      const botPct = totalClicks > 0 ? (1 - row.quality) * 100 : 0;
       map.set(row.sub_id, {
         botPercent: Math.round(botPct * 10) / 10,
         adspectClicks: totalClicks,
       });
     }
-    console.log("[Adspect] Map size:", map.size, "Sample keys:", Array.from(map.keys()).slice(0, 5));
     return map;
   } catch (err) {
     console.error("[getAdspectStatsBySite] Adspect API error:", err);
@@ -396,11 +386,6 @@ export async function getPublisherStats(params: {
 
   // 5b. Fetch Adspect stats by sub_id (site)
   const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
-  if (adspectStats) {
-    const sampleNames = rawRows.slice(0, 5).map((r) => ({ id: r.siteExternalId, name: r.siteName }));
-    console.log("[Adspect] Taboola sample sites:", JSON.stringify(sampleNames));
-    console.log("[Adspect] Adspect map keys:", Array.from(adspectStats.keys()));
-  }
 
   // 6. Merge Taboola + Keitaro + Adspect data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

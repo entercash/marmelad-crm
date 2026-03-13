@@ -15,16 +15,16 @@ type Props = {
 };
 
 const SUB_MAPPING = [
-  { sub: "sub1", macro: "{campaign_id}", desc: "Taboola Campaign ID" },
-  { sub: "sub2", macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
-  { sub: "sub3", macro: "{site}", desc: "Publisher site name" },
-  { sub: "sub4", macro: "{site_id}", desc: "Publisher site ID" },
-  { sub: "sub5", macro: "{platform}", desc: "Device (Desktop/Mobile/Tablet)" },
-  { sub: "sub6", macro: "{country}", desc: "Country code (ISO)" },
-  { sub: "sub7", macro: "{click_id}", desc: "Unique click ID (for S2S postback)" },
-  { sub: "sub8", macro: "{account_id}", desc: "Taboola Account ID" },
-  { sub: "sub9", macro: "{title}", desc: "Ad title text" },
-  { sub: "sub10", macro: "{campaign_name}", desc: "Campaign name" },
+  { sub: "utm_campaign", macro: "{campaign_id}", desc: "Campaign ID" },
+  { sub: "utm_content",  macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
+  { sub: "utm_source",   macro: "{site}", desc: "Publisher site name" },
+  { sub: "src_id",       macro: "{site_id}", desc: "Publisher site ID" },
+  { sub: "utm_medium",   macro: "{platform}", desc: "Device (Desktop/Mobile/Tablet)" },
+  { sub: "geo",          macro: "{country}", desc: "Country code (ISO)" },
+  { sub: "click_id",     macro: "{click_id}", desc: "Unique click ID (for S2S postback)" },
+  { sub: "network_id",   macro: "{account_id}", desc: "Account ID" },
+  { sub: "headline",     macro: "{title}", desc: "Ad title text" },
+  { sub: "utm_term",     macro: "{campaign_name}", desc: "Campaign name" },
 ] as const;
 
 function buildTrackingUrl(domain: string, campaignId: string, protocol: string): string {
@@ -33,7 +33,7 @@ function buildTrackingUrl(domain: string, campaignId: string, protocol: string):
   return `${protocol}://${domain}/${campaignId}?${params}`;
 }
 
-const S2S_POSTBACK = "http://trc.taboola.com/actions-handler/log/3/s2s-action?click-id={sub7}&name=lead&revenue={payout}";
+const S2S_POSTBACK = "http://trc.taboola.com/actions-handler/log/3/s2s-action?click-id={click_id}&name=lead&revenue={payout}";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -204,7 +204,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
             </code>
           </div>
           <p className="mt-2 text-[11px] text-slate-500">
-            Add this as a postback URL in Keitaro. <code className="text-slate-400">{"{sub7}"}</code> = click_id, <code className="text-slate-400">{"{payout}"}</code> = conversion payout.
+            Add this as a postback URL in Keitaro. <code className="text-slate-400">{"{click_id}"}</code> = Taboola click ID, <code className="text-slate-400">{"{payout}"}</code> = conversion payout.
           </p>
         </div>
       </div>
@@ -216,7 +216,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                <th className="px-4 py-2.5 text-xs font-semibold text-slate-400">Sub</th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-slate-400">Parameter</th>
                 <th className="px-4 py-2.5 text-xs font-semibold text-slate-400">Taboola Macro</th>
                 <th className="px-4 py-2.5 text-xs font-semibold text-slate-400">Description</th>
               </tr>

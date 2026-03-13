@@ -123,7 +123,8 @@ function parseTaboolaDate(raw: string): Date | null {
 function parseDecimal(raw: string): number | null {
   const s = raw.trim();
   if (!s || s === "None" || s === "-") return null;
-  const stripped = s.replace(/%$/, "");
+  // Strip thousand-separator commas (e.g. "1,228.72" → "1228.72")
+  const stripped = s.replace(/%$/, "").replace(/,/g, "");
   const n = Number(stripped);
   if (Number.isNaN(n)) return null;
   // If the original had %, convert from percentage to ratio (12.34% → 0.1234)
@@ -133,7 +134,8 @@ function parseDecimal(raw: string): number | null {
 
 /** Parse an integer string, return 0 for empty/invalid. */
 function parseInt_(raw: string): number {
-  const n = parseInt(raw.trim(), 10);
+  // Strip thousand-separator commas (e.g. "1,234" → "1234")
+  const n = parseInt(raw.trim().replace(/,/g, ""), 10);
   return Number.isNaN(n) ? 0 : n;
 }
 

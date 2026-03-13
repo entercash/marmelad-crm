@@ -13,6 +13,7 @@
  * Note: Uses Node.js built-in `fetch` (requires Node 18+).
  */
 
+import { ProxyAgent } from "undici";
 import { TaboolaError, ConfigurationError } from "@/lib/errors";
 import type {
   TaboolaTokenResponse,
@@ -38,6 +39,7 @@ export interface TaboolaConfig {
   clientId: string;
   clientSecret: string;
   accountId: string;
+  proxyUrl?: string;
 }
 
 export function loadTaboolaConfig(): TaboolaConfig {
@@ -64,9 +66,21 @@ interface TokenCache {
 export class TaboolaClient {
   private readonly config: TaboolaConfig;
   private tokenCache: TokenCache | null = null;
+  private readonly dispatcher: ProxyAgent | undefined;
 
   constructor(config: TaboolaConfig) {
     this.config = config;
+    this.dispatcher = config.proxyUrl
+      ? new ProxyAgent(config.proxyUrl)
+      : undefined;
+  }
+
+  /** Proxy-aware fetch wrapper. */
+  private proxyFetch(url: string, init?: RequestInit): Promise<Response> {
+    if (this.dispatcher) {
+      return fetch(url, { ...init, dispatcher: this.dispatcher } as RequestInit);
+    }
+    return fetch(url, init);
   }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -88,7 +102,7 @@ export class TaboolaClient {
 
     let res: Response;
     try {
-      res = await fetch(AUTH_URL, {
+      res = await this.proxyFetch(AUTH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: body.toString(),
@@ -133,7 +147,7 @@ export class TaboolaClient {
 
     let res: Response;
     try {
-      res = await fetch(url.toString(), {
+      res = await this.proxyFetch(url.toString(), {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",

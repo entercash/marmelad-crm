@@ -56,7 +56,7 @@ export interface KeitaroReportRequest {
 
 export interface KeitaroFilter {
   name: string;
-  operator: "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "IN";
+  operator: "EQUALS" | "NOT_EQUAL" | "CONTAINS" | "NOT_CONTAIN" | "IN_LIST" | "NOT_IN_LIST" | "BETWEEN" | "GREATER_THAN" | "LESS_THAN";
   values: string[];
 }
 

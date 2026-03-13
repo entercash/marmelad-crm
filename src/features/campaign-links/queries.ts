@@ -156,7 +156,7 @@ async function getKeitaroStatsForCampaigns(
       filters: [
         {
           name: "campaign_id",
-          operator: "IN",
+          operator: "IN_LIST",
           values: keitaroExternalIds.map(String),
         },
       ],

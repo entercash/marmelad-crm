@@ -91,6 +91,28 @@ export async function getKeitaroInstances(): Promise<KeitaroInstanceData[]> {
       apiKey: data.apiKey || null,
     });
   });
+
+  // Include legacy 2-segment keys (keitaro.apiUrl / keitaro.apiKey) as a "default" instance
+  if (instances.length === 0) {
+    const legacyMap: Record<string, string> = {};
+    for (const row of rows) {
+      const parts = row.key.split(".");
+      if (parts.length === 2 && (parts[1] === "apiUrl" || parts[1] === "apiKey")) {
+        legacyMap[parts[1]] = isSensitiveKey(row.key)
+          ? (safeDecrypt(row.value) ?? row.value)
+          : row.value;
+      }
+    }
+    if (legacyMap.apiUrl || legacyMap.apiKey) {
+      instances.push({
+        id: "default",
+        name: "Keitaro (legacy)",
+        apiUrl: legacyMap.apiUrl || null,
+        apiKey: legacyMap.apiKey || null,
+      });
+    }
+  }
+
   return instances;
 }
 
@@ -98,6 +120,17 @@ export async function getKeitaroInstances(): Promise<KeitaroInstanceData[]> {
 export async function getKeitaroInstanceSettings(
   instanceId: string,
 ): Promise<KeitaroInstanceData> {
+  // Legacy "default" instance uses 2-segment keys
+  if (instanceId === "default") {
+    const settings = await getSettings("keitaro.");
+    return {
+      id: "default",
+      name: "Keitaro (legacy)",
+      apiUrl: settings["keitaro.apiUrl"] || null,
+      apiKey: settings["keitaro.apiKey"] || null,
+    };
+  }
+
   const prefix = `keitaro.${instanceId}.`;
   const settings = await getSettings(prefix);
   return {

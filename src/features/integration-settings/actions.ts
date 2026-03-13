@@ -104,10 +104,17 @@ export async function saveKeitaroInstance(
   }
 
   const cleanUrl = apiUrl.replace(/\/+$/, "");
-  const prefix = `keitaro.${instanceId}`;
-  await setSetting(`${prefix}.name`, name);
-  await setSetting(`${prefix}.apiUrl`, cleanUrl);
-  await setSetting(`${prefix}.apiKey`, apiKey);
+
+  if (instanceId === "default") {
+    // Legacy instance uses 2-segment keys
+    await setSetting("keitaro.apiUrl", cleanUrl);
+    await setSetting("keitaro.apiKey", apiKey);
+  } else {
+    const prefix = `keitaro.${instanceId}`;
+    await setSetting(`${prefix}.name`, name);
+    await setSetting(`${prefix}.apiUrl`, cleanUrl);
+    await setSetting(`${prefix}.apiKey`, apiKey);
+  }
 
   revalidatePath("/settings");
   return { success: true };
@@ -146,10 +153,17 @@ export async function deleteKeitaroInstance(
   const denied = await guardAdmin();
   if (denied) return denied;
 
-  const prefix = `keitaro.${instanceId}.`;
-  await prisma.integrationSetting.deleteMany({
-    where: { key: { startsWith: prefix } },
-  });
+  if (instanceId === "default") {
+    // Legacy instance: delete 2-segment keys
+    await prisma.integrationSetting.deleteMany({
+      where: { key: { in: ["keitaro.apiUrl", "keitaro.apiKey"] } },
+    });
+  } else {
+    const prefix = `keitaro.${instanceId}.`;
+    await prisma.integrationSetting.deleteMany({
+      where: { key: { startsWith: prefix } },
+    });
+  }
 
   revalidatePath("/settings");
   return { success: true };

@@ -157,17 +157,18 @@ async function getSiteCampaignAssociations(
   return map;
 }
 
-// ─── Keitaro stats by campaign + sub_id_1 ───────────────────────────────────
+// ─── Keitaro stats by campaign (campaign-level) ─────────────────────────────
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
- * Returns Map keyed by "{keitaroCampaignId}_{siteExternalId}".
+ * Fetch Keitaro stats grouped by campaign_id only (no sub_id).
+ * Leads are distributed to sites proportionally by clicks in getPublisherStats.
+ * Returns Map keyed by keitaroCampaignExternalId.
  */
-async function getKeitaroStatsByCampaignAndSite(
+async function getKeitaroStatsByCampaign(
   keitaroExternalIds: number[],
   dateFrom?: string,
   dateTo?: string,
-): Promise<Map<string, { leads: number; revenue: number }> | null> {
+): Promise<Map<number, { leads: number; revenue: number }> | null> {
   if (keitaroExternalIds.length === 0) return new Map();
 
   try {
@@ -184,42 +185,95 @@ async function getKeitaroStatsByCampaignAndSite(
 
     const report = await client.buildReport({
       range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id_1"],
+      grouping: ["campaign_id"],
       metrics: ["conversions", "revenue"],
       limit: 10_000,
       offset: 0,
     });
 
     const idSet = new Set(keitaroExternalIds);
-    const map = new Map<string, { leads: number; revenue: number }>();
-    let totalRows = 0;
-    let rowsWithSub = 0;
-    let rowsMatched = 0;
+    const map = new Map<number, { leads: number; revenue: number }>();
     for (const row of report.rows) {
-      totalRows++;
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
-      rowsMatched++;
 
-      const subId = String(row.sub_id_1 ?? "").trim();
-      if (!subId) continue;
-      rowsWithSub++;
-
-      const key = `${campId}_${subId}`;
-      map.set(key, {
+      map.set(campId, {
         leads: Number(row.conversions ?? 0),
         revenue: Number(row.revenue ?? 0),
       });
     }
-    console.log(`[DIAG keitaro] report: ${totalRows} total rows, ${rowsMatched} matched campaigns, ${rowsWithSub} with sub_id_1, ${map.size} unique keys`);
-    // Log first 10 keys with leads > 0
-    const keysWithLeads = Array.from(map.entries()).filter(([, v]) => v.leads > 0).slice(0, 10);
-    console.log(`[DIAG keitaro] keys with leads:`, keysWithLeads.map(([k, v]) => `${k} → ${v.leads}L/${v.revenue}R`));
     return map;
   } catch (err) {
-    console.error("[getKeitaroStatsByCampaignAndSite] Keitaro API error:", err);
+    console.error("[getKeitaroStatsByCampaign] Keitaro API error:", err);
     return null;
   }
+}
+
+// ─── Click distribution helpers ─────────────────────────────────────────────
+
+/** Get total clicks per Taboola campaign (across ALL sites, for proportional share denominator). */
+async function getCampaignClickTotals(
+  campaignExternalIds: string[],
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<Map<string, number>> {
+  if (campaignExternalIds.length === 0) return new Map();
+
+  const dateClause = dateFrom && dateTo
+    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<
+    { campaignExternalId: string; clicks: bigint }[]
+  >(
+    Prisma.sql`
+      SELECT "campaignExternalId", SUM("clicks") as clicks
+      FROM "taboola_csv_rows"
+      WHERE "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
+        ${dateClause}
+      GROUP BY "campaignExternalId"
+    `,
+  );
+
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    map.set(r.campaignExternalId, Number(r.clicks));
+  }
+  return map;
+}
+
+/** Get clicks per site per campaign (for proportional lead distribution to individual sites). */
+async function getSiteCampaignClicks(
+  siteExternalIds: string[],
+  campaignExternalIds: string[],
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<Map<string, number>> {
+  if (siteExternalIds.length === 0 || campaignExternalIds.length === 0) return new Map();
+
+  const dateClause = dateFrom && dateTo
+    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<
+    { siteExternalId: string; campaignExternalId: string; clicks: bigint }[]
+  >(
+    Prisma.sql`
+      SELECT "siteExternalId", "campaignExternalId", SUM("clicks") as clicks
+      FROM "taboola_csv_rows"
+      WHERE "siteExternalId" IN (${Prisma.join(siteExternalIds)})
+        AND "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
+        ${dateClause}
+      GROUP BY "siteExternalId", "campaignExternalId"
+    `,
+  );
+
+  // Key: "siteExternalId_campaignExternalId" → clicks
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    map.set(`${r.siteExternalId}_${r.campaignExternalId}`, Number(r.clicks));
+  }
+  return map;
 }
 
 // ─── Adspect stats by sub_id (site) ─────────────────────────────────────────
@@ -417,30 +471,28 @@ export async function getPublisherStats(params: {
   const siteIds = rawRows.map((r) => r.siteExternalId);
   const siteCampaigns = await getSiteCampaignAssociations(siteIds, country, dateFrom, dateTo);
 
-  // 5. Fetch Keitaro stats grouped by campaign_id + sub_id_1
+  // 5. Fetch Keitaro stats at campaign level + click distribution data
   const keitaroExternalIds = Array.from(
     new Set(links.map((l) => l.keitaroCampaignExternalId)),
   );
-  const keitaroStats =
-    await getKeitaroStatsByCampaignAndSite(keitaroExternalIds, dateFrom, dateTo);
+  const linkedTaboolaCampaignIds = Array.from(
+    new Set(links.map((l) => l.taboolaCampaignExternalId)),
+  );
 
-  // 5b. Fetch Adspect stats by sub_id (site)
-  const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
+  const [keitaroStats, campaignClickTotals, siteCampaignClickMap, adspectStats] =
+    await Promise.all([
+      getKeitaroStatsByCampaign(keitaroExternalIds, dateFrom, dateTo),
+      getCampaignClickTotals(linkedTaboolaCampaignIds, dateFrom, dateTo),
+      getSiteCampaignClicks(siteIds, linkedTaboolaCampaignIds, dateFrom, dateTo),
+      getAdspectStatsBySite(siteIds, dateFrom, dateTo),
+    ]);
 
-  // DIAG: log matching info
-  console.log(`[DIAG merge] ${rawRows.length} sites on page, ${links.length} campaign links, keitaroStats: ${keitaroStats?.size ?? 'null'} keys`);
-  if (keitaroStats && rawRows.length > 0) {
-    // Check first 3 sites
-    for (const r of rawRows.slice(0, 3)) {
-      const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
-      const linkedCampaigns = campaigns.filter(c => linkByTaboolaCampaign.has(c));
-      const keys = linkedCampaigns.map(c => {
-        const link = linkByTaboolaCampaign.get(c)!;
-        return `${link.keitaroCampaignExternalId}_${r.siteExternalId}`;
-      });
-      const found = keys.filter(k => keitaroStats.has(k));
-      console.log(`[DIAG merge] site ${r.siteExternalId} (${r.siteName}): ${campaigns.length} campaigns, ${linkedCampaigns.length} linked, keys: [${keys.join(', ')}], found: [${found.join(', ')}]`);
-    }
+  // Build: keitaroCampaignExternalId → total Taboola clicks (denominator for proportional share)
+  const keitaroCampaignTotalClicks = new Map<number, number>();
+  for (const link of links) {
+    const kid = link.keitaroCampaignExternalId;
+    const tc = campaignClickTotals.get(link.taboolaCampaignExternalId) ?? 0;
+    keitaroCampaignTotalClicks.set(kid, (keitaroCampaignTotalClicks.get(kid) ?? 0) + tc);
   }
 
   // 6. Merge Taboola + Keitaro + Adspect data
@@ -451,7 +503,7 @@ export async function getPublisherStats(params: {
     const cpc = clicks > 0 ? spend / clicks : null;
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : null;
 
-    // Sum leads and revenue across campaigns for this site
+    // Sum leads and revenue across campaigns for this site (proportional by clicks)
     let totalLeads = 0;
     let totalRevenue = 0;
     let hasKeitaroData = false;
@@ -459,19 +511,24 @@ export async function getPublisherStats(params: {
     const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
     for (const campaignExternalId of campaigns) {
       const link = linkByTaboolaCampaign.get(campaignExternalId);
-      if (!link) continue; // No CampaignLink for this campaign
+      if (!link) continue;
 
-      const key = `${link.keitaroCampaignExternalId}_${r.siteExternalId}`;
-      const ks = keitaroStats?.get(key);
+      const ks = keitaroStats?.get(link.keitaroCampaignExternalId);
       if (!ks) continue;
 
       hasKeitaroData = true;
-      totalLeads += ks.leads;
+
+      // Proportional share: site clicks in this campaign / total clicks for the Keitaro campaign
+      const siteClicks = siteCampaignClickMap.get(`${r.siteExternalId}_${campaignExternalId}`) ?? 0;
+      const totalClicks = keitaroCampaignTotalClicks.get(link.keitaroCampaignExternalId) ?? 0;
+      const share = totalClicks > 0 ? siteClicks / totalClicks : 0;
+
+      totalLeads += ks.leads * share;
 
       if (link.paymentModel === "CPL" && link.cplRate !== null) {
-        totalRevenue += ks.leads * link.cplRate;
+        totalRevenue += ks.leads * share * link.cplRate;
       } else if (link.paymentModel === "CPA") {
-        totalRevenue += ks.revenue;
+        totalRevenue += ks.revenue * share;
       }
     }
 
@@ -596,14 +653,13 @@ export async function getPublisherDailyTrends(
     });
   }
 
-  // 2. Keitaro: daily revenue per site
+  // 2. Keitaro: daily revenue per site (campaign-level, distributed by clicks)
   //    Map<siteId, Map<day, { leads, revenue }>>
   const revenueByDay = new Map<string, Map<string, { leads: number; revenue: number }>>();
 
   try {
     const settings = await getKeitaroSettings();
     if (settings.apiUrl && settings.apiKey) {
-      // Get campaign links for revenue calculation
       const links = await prisma.campaignLink.findMany({
         select: {
           taboolaCampaignExternalId: true,
@@ -618,54 +674,81 @@ export async function getPublisherDailyTrends(
         const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-          grouping: ["day", "campaign_id", "sub_id_1"],
+          grouping: ["day", "campaign_id"],
           metrics: ["conversions", "revenue"],
           limit: 50_000,
           offset: 0,
         });
 
-        // Build lookup: taboolaCampaignExternalId → link info
+        // Daily Keitaro data: Map<keitaroCampaignId, Map<day, { leads, revenue }>>
+        const keitaroDailyByCampaign = new Map<number, Map<string, { leads: number; revenue: number }>>();
+        const idSet = new Set(keitaroIds);
+        for (const row of report.rows) {
+          const campId = Number(row.campaign_id);
+          const day = String(row.day ?? "").trim();
+          if (!campId || !day || !idSet.has(campId)) continue;
+
+          if (!keitaroDailyByCampaign.has(campId)) keitaroDailyByCampaign.set(campId, new Map());
+          keitaroDailyByCampaign.get(campId)!.set(day, {
+            leads: Number(row.conversions ?? 0),
+            revenue: Number(row.revenue ?? 0),
+          });
+        }
+
+        // Get click distribution for proportional share (7-day period)
+        const linkedTaboolaCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
+        const [campClickTotals, siteCampClicks] = await Promise.all([
+          getCampaignClickTotals(linkedTaboolaCampaignIds, dateFrom, dateTo),
+          getSiteCampaignClicks(siteExternalIds, linkedTaboolaCampaignIds, dateFrom, dateTo),
+        ]);
+
+        // Build keitaroCampaignId → total Taboola clicks
+        const keitaroCampTotalClicks = new Map<number, number>();
+        for (const l of links) {
+          const kid = l.keitaroCampaign.externalId;
+          const tc = campClickTotals.get(l.taboolaCampaignExternalId) ?? 0;
+          keitaroCampTotalClicks.set(kid, (keitaroCampTotalClicks.get(kid) ?? 0) + tc);
+        }
+
         const linkByCampaign = new Map(
           links.map((l) => [l.taboolaCampaignExternalId, l]),
         );
-
-        // Also need site → campaign mapping for this date range
         const siteCampaigns = await getSiteCampaignAssociations(siteExternalIds, undefined, dateFrom, dateTo);
-        // Invert: keitaroCampaignId → { paymentModel, cplRate } per taboolaCampaign
-        const keitaroToLink = new Map<number, typeof links[number][]>();
-        for (const l of links) {
-          const kid = l.keitaroCampaign.externalId;
-          if (!keitaroToLink.has(kid)) keitaroToLink.set(kid, []);
-          keitaroToLink.get(kid)!.push(l);
-        }
 
-        for (const row of report.rows) {
-          const campId = Number(row.campaign_id);
-          const subId = String(row.sub_id_1 ?? "").trim();
-          const day = String(row.day ?? "").trim();
-          if (!campId || !subId || !day) continue;
-          if (!siteExternalIds.includes(subId)) continue;
+        // Distribute daily Keitaro data to sites by click share
+        for (const siteId of siteExternalIds) {
+          const campaigns = siteCampaigns.get(siteId) ?? [];
+          for (const campaignExternalId of campaigns) {
+            const link = linkByCampaign.get(campaignExternalId);
+            if (!link) continue;
 
-          // Find link for this keitaro campaign
-          const matchingLinks = keitaroToLink.get(campId);
-          if (!matchingLinks?.length) continue;
-          const link = matchingLinks[0]; // use first match
+            const kid = link.keitaroCampaign.externalId;
+            const dailyMap = keitaroDailyByCampaign.get(kid);
+            if (!dailyMap) continue;
 
-          const leads = Number(row.conversions ?? 0);
-          let revenue = 0;
-          if (link.paymentModel === "CPL" && link.cplRate) {
-            revenue = leads * Number(link.cplRate);
-          } else if (link.paymentModel === "CPA") {
-            revenue = Number(row.revenue ?? 0);
+            const siteClicks = siteCampClicks.get(`${siteId}_${campaignExternalId}`) ?? 0;
+            const totalClicks = keitaroCampTotalClicks.get(kid) ?? 0;
+            const share = totalClicks > 0 ? siteClicks / totalClicks : 0;
+            if (share === 0) continue;
+
+            if (!revenueByDay.has(siteId)) revenueByDay.set(siteId, new Map());
+            const siteDayMap = revenueByDay.get(siteId)!;
+
+            for (const [day, data] of Array.from(dailyMap.entries())) {
+              let revenue = 0;
+              if (link.paymentModel === "CPL" && link.cplRate) {
+                revenue = data.leads * share * Number(link.cplRate);
+              } else if (link.paymentModel === "CPA") {
+                revenue = data.revenue * share;
+              }
+
+              const existing = siteDayMap.get(day) ?? { leads: 0, revenue: 0 };
+              siteDayMap.set(day, {
+                leads: existing.leads + data.leads * share,
+                revenue: existing.revenue + revenue,
+              });
+            }
           }
-
-          if (!revenueByDay.has(subId)) revenueByDay.set(subId, new Map());
-          const dayMap = revenueByDay.get(subId)!;
-          const existing = dayMap.get(day) ?? { leads: 0, revenue: 0 };
-          dayMap.set(day, {
-            leads: existing.leads + leads,
-            revenue: existing.revenue + revenue,
-          });
         }
       }
     }

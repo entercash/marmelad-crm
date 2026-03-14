@@ -13,6 +13,7 @@ type KeitaroCampaign = {
 
 type Props = {
   campaigns: KeitaroCampaign[];
+  trackerDomain: string;
 };
 
 const SUB_MAPPING = [
@@ -28,15 +29,11 @@ const SUB_MAPPING = [
   { sub: "utm_term",     macro: "{campaign_name}", desc: "Campaign name" },
 ] as const;
 
-function buildTrackingUrl(domain: string, campaignId: string, protocol: string): string {
-  if (!domain || !campaignId) return "";
-  const params = SUB_MAPPING.map((m) => `${m.sub}=${m.macro}`).join("&");
-  return `${protocol}://${domain}/${campaignId}?${params}`;
-}
+const PARAMS_STRING = SUB_MAPPING.map((m) => `${m.sub}=${m.macro}`).join("&");
 
 const S2S_POSTBACK = "http://trc.taboola.com/actions-handler/log/3/s2s-action?click-id={click_id}&name=lead&revenue={payout}";
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -45,7 +42,6 @@ function CopyButton({ text }: { text: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -71,26 +67,26 @@ function CopyButton({ text }: { text: string }) {
       ) : (
         <>
           <Copy className="h-3.5 w-3.5" />
-          Copy
+          {label ?? "Copy"}
         </>
       )}
     </button>
   );
 }
 
-export function UtmBuilderForm({ campaigns }: Props) {
-  const [domain, setDomain] = useState("");
-  const [campaignId, setCampaignId] = useState("");
+export function UtmBuilderForm({ campaigns, trackerDomain }: Props) {
+  const [campaignAlias, setCampaignAlias] = useState("");
   const [protocol, setProtocol] = useState("https");
   const [inputMode, setInputMode] = useState<"select" | "manual">("select");
 
-  const trackingUrl = buildTrackingUrl(domain, campaignId, protocol);
+  const baseUrl = trackerDomain && campaignAlias
+    ? `${protocol}://${trackerDomain}/${campaignAlias}`
+    : "";
+
+  const fullUrl = baseUrl ? `${baseUrl}?${PARAMS_STRING}` : "";
 
   function handleCampaignSelect(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    if (val) {
-      setCampaignId(val);
-    }
+    setCampaignAlias(e.target.value);
   }
 
   return (
@@ -99,7 +95,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
       <div className="glass p-5">
         <h3 className="mb-4 text-sm font-semibold text-slate-400">Configuration</h3>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {/* Protocol */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-400">Protocol</label>
@@ -113,19 +109,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
             </select>
           </div>
 
-          {/* Tracker domain */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-400">Tracker Domain</label>
-            <input
-              type="text"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value.replace(/^https?:\/\//, "").replace(/\/+$/, ""))}
-              placeholder="tracker.example.com"
-              className="h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-          </div>
-
-          {/* Campaign ID */}
+          {/* Campaign */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-xs font-medium text-slate-400">Keitaro Campaign</label>
@@ -133,7 +117,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
                 type="button"
                 onClick={() => {
                   setInputMode(inputMode === "select" ? "manual" : "select");
-                  setCampaignId("");
+                  setCampaignAlias("");
                 }}
                 className="text-[10px] text-blue-400 hover:text-blue-300"
               >
@@ -142,7 +126,7 @@ export function UtmBuilderForm({ campaigns }: Props) {
             </div>
             {inputMode === "select" ? (
               <select
-                value={campaignId}
+                value={campaignAlias}
                 onChange={handleCampaignSelect}
                 className="h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -156,38 +140,68 @@ export function UtmBuilderForm({ campaigns }: Props) {
             ) : (
               <input
                 type="text"
-                value={campaignId}
-                onChange={(e) => setCampaignId(e.target.value.trim())}
-                placeholder="Campaign ID (e.g. 42)"
+                value={campaignAlias}
+                onChange={(e) => setCampaignAlias(e.target.value.trim())}
+                placeholder="Campaign alias or ID"
                 className="h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             )}
           </div>
         </div>
+
+        {trackerDomain && (
+          <p className="mt-3 text-[11px] text-slate-500">
+            Tracker domain: <code className="text-slate-400">{trackerDomain}</code>
+          </p>
+        )}
+        {!trackerDomain && (
+          <p className="mt-3 text-[11px] text-amber-400">
+            Keitaro not configured. Set API URL in Settings → Keitaro.
+          </p>
+        )}
       </div>
 
       {/* ── Generated URLs ─────────────────────────────────────────── */}
       <div className="space-y-4">
-        {/* Tracking URL */}
+        {/* Base URL */}
         <div className="glass p-5">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-400">
               <ExternalLink className="mr-1.5 inline h-3.5 w-3.5" />
-              Tracking URL
+              Campaign URL
             </h3>
-            {trackingUrl && <CopyButton text={trackingUrl} />}
+            {baseUrl && <CopyButton text={baseUrl} />}
           </div>
-          {trackingUrl ? (
+          {baseUrl ? (
             <div className="overflow-x-auto rounded-md bg-black/30 p-3">
               <code className="whitespace-pre-wrap break-all text-xs text-emerald-400">
-                {trackingUrl}
+                {baseUrl}
               </code>
             </div>
           ) : (
             <p className="text-xs text-slate-500">
-              Fill in the domain and campaign to generate the URL
+              Select a campaign to generate the URL
             </p>
           )}
+        </div>
+
+        {/* Parameters (always visible, static) */}
+        <div className="glass p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-400">
+              <ExternalLink className="mr-1.5 inline h-3.5 w-3.5" />
+              Parameters
+            </h3>
+            <div className="flex gap-2">
+              <CopyButton text={PARAMS_STRING} label="Copy params" />
+              {fullUrl && <CopyButton text={fullUrl} label="Copy full URL" />}
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-md bg-black/30 p-3">
+            <code className="whitespace-pre-wrap break-all text-xs text-sky-400">
+              {PARAMS_STRING}
+            </code>
+          </div>
         </div>
 
         {/* S2S Postback */}

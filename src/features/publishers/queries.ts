@@ -192,12 +192,18 @@ async function getKeitaroStatsByCampaignAndSite(
 
     const idSet = new Set(keitaroExternalIds);
     const map = new Map<string, { leads: number; revenue: number }>();
+    let totalRows = 0;
+    let rowsWithSub = 0;
+    let rowsMatched = 0;
     for (const row of report.rows) {
+      totalRows++;
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
+      rowsMatched++;
 
       const subId = String(row.sub_id_1 ?? "").trim();
       if (!subId) continue;
+      rowsWithSub++;
 
       const key = `${campId}_${subId}`;
       map.set(key, {
@@ -205,6 +211,10 @@ async function getKeitaroStatsByCampaignAndSite(
         revenue: Number(row.revenue ?? 0),
       });
     }
+    console.log(`[DIAG keitaro] report: ${totalRows} total rows, ${rowsMatched} matched campaigns, ${rowsWithSub} with sub_id_1, ${map.size} unique keys`);
+    // Log first 10 keys with leads > 0
+    const keysWithLeads = Array.from(map.entries()).filter(([, v]) => v.leads > 0).slice(0, 10);
+    console.log(`[DIAG keitaro] keys with leads:`, keysWithLeads.map(([k, v]) => `${k} → ${v.leads}L/${v.revenue}R`));
     return map;
   } catch (err) {
     console.error("[getKeitaroStatsByCampaignAndSite] Keitaro API error:", err);
@@ -416,6 +426,22 @@ export async function getPublisherStats(params: {
 
   // 5b. Fetch Adspect stats by sub_id (site)
   const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
+
+  // DIAG: log matching info
+  console.log(`[DIAG merge] ${rawRows.length} sites on page, ${links.length} campaign links, keitaroStats: ${keitaroStats?.size ?? 'null'} keys`);
+  if (keitaroStats && rawRows.length > 0) {
+    // Check first 3 sites
+    for (const r of rawRows.slice(0, 3)) {
+      const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
+      const linkedCampaigns = campaigns.filter(c => linkByTaboolaCampaign.has(c));
+      const keys = linkedCampaigns.map(c => {
+        const link = linkByTaboolaCampaign.get(c)!;
+        return `${link.keitaroCampaignExternalId}_${r.siteExternalId}`;
+      });
+      const found = keys.filter(k => keitaroStats.has(k));
+      console.log(`[DIAG merge] site ${r.siteExternalId} (${r.siteName}): ${campaigns.length} campaigns, ${linkedCampaigns.length} linked, keys: [${keys.join(', ')}], found: [${found.join(', ')}]`);
+    }
+  }
 
   // 6. Merge Taboola + Keitaro + Adspect data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

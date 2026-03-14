@@ -16,8 +16,8 @@ type Props = {
 };
 
 const SUB_MAPPING = [
-  { sub: "utm_campaign", macro: "{campaign_id}", desc: "Campaign ID" },
-  { sub: "utm_content",  macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
+  { sub: "camp",         macro: "{campaign_id}", desc: "Campaign ID" },
+  { sub: "cont",         macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
   { sub: "utm_source",   macro: "{site}", desc: "Publisher site name" },
   { sub: "src_id",       macro: "{site_id}", desc: "Publisher site ID" },
   { sub: "utm_medium",   macro: "{platform}", desc: "Device (Desktop/Mobile/Tablet)" },

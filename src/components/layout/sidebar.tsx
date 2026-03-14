@@ -20,6 +20,7 @@ import {
   LogOut,
   Users,
   Wrench,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,7 @@ const navigation: NavGroup[] = [
     label: "Tools",
     items: [
       { label: "UTM Builder", href: "/tools/utm-builder", icon: Wrench },
+      { label: "S2S Postback", href: "/tools/s2s-postback", icon: Send },
     ],
   },
   {

@@ -192,21 +192,6 @@ async function getKeitaroStatsByCampaignAndSite(
 
     const idSet = new Set(keitaroExternalIds);
     const map = new Map<string, { leads: number; revenue: number }>();
-
-    // Diagnostic: log what Keitaro returns for sub_id_1
-    const sampleRows = report.rows.filter((r) => idSet.has(Number(r.campaign_id))).slice(0, 10);
-    if (sampleRows.length > 0) {
-      console.log("[Publishers/Keitaro] Total rows from Keitaro:", report.rows.length);
-      console.log("[Publishers/Keitaro] Matched campaign rows:", report.rows.filter((r) => idSet.has(Number(r.campaign_id))).length);
-      console.log("[Publishers/Keitaro] Sample sub_id_1 values:", sampleRows.map((r) => ({
-        campaign_id: r.campaign_id,
-        sub_id_1: r.sub_id_1,
-        conversions: r.conversions,
-      })));
-    } else {
-      console.log("[Publishers/Keitaro] No matching rows. keitaroExternalIds:", keitaroExternalIds, "report.rows count:", report.rows.length);
-    }
-
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
@@ -431,21 +416,6 @@ export async function getPublisherStats(params: {
 
   // 5b. Fetch Adspect stats by sub_id (site)
   const adspectStats = await getAdspectStatsBySite(siteIds, dateFrom, dateTo);
-
-  // Diagnostic: log match keys
-  if (keitaroStats && keitaroStats.size > 0) {
-    const keitaroKeys = Array.from(keitaroStats.keys()).slice(0, 5);
-    const expectedKeys = siteIds.slice(0, 3).flatMap((sid) => {
-      const campaigns = siteCampaigns.get(sid) ?? [];
-      return campaigns.map((cid) => {
-        const link = linkByTaboolaCampaign.get(cid);
-        return link ? `${link.keitaroCampaignExternalId}_${sid}` : null;
-      }).filter(Boolean);
-    });
-    console.log("[Publishers/Merge] Keitaro map keys (sample):", keitaroKeys);
-    console.log("[Publishers/Merge] Expected keys (sample):", expectedKeys);
-    console.log("[Publishers/Merge] Keitaro map size:", keitaroStats.size, "| CampaignLinks count:", links.length);
-  }
 
   // 6. Merge Taboola + Keitaro + Adspect data
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

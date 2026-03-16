@@ -181,11 +181,13 @@ export async function saveTaboolaAccountSettings(
   if (denied) return denied;
 
   const accountId = (formData.get("accountId") as string)?.trim();
+  const taboolaAccountId = (formData.get("taboolaAccountId") as string)?.trim();
   const clientId = (formData.get("clientId") as string)?.trim();
   const clientSecret = (formData.get("clientSecret") as string)?.trim();
   const proxyUrl = (formData.get("proxyUrl") as string)?.trim() || "";
 
   if (!accountId) return { success: false, error: "Account is required" };
+  if (!taboolaAccountId) return { success: false, error: "Taboola Account ID is required" };
   if (!clientId) return { success: false, error: "Client ID is required" };
   if (!clientSecret) return { success: false, error: "Client Secret is required" };
 
@@ -197,6 +199,12 @@ export async function saveTaboolaAccountSettings(
       return { success: false, error: "Invalid proxy URL format" };
     }
   }
+
+  // Save Taboola Account ID to Account.externalId
+  await prisma.account.update({
+    where: { id: accountId },
+    data: { externalId: taboolaAccountId },
+  });
 
   const prefix = `taboola.${accountId}`;
   await setSetting(`${prefix}.clientId`, clientId);

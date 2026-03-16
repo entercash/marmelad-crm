@@ -150,9 +150,24 @@ function AccountRow({ account }: { account: TaboolaAccountOption }) {
             </div>
           )}
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`taboolaAccountId-${account.id}`}>Account ID *</Label>
+            <Input
+              id={`taboolaAccountId-${account.id}`}
+              name="taboolaAccountId"
+              type="text"
+              placeholder="taboola-network-abcdef1234"
+              required
+              defaultValue={account.externalId ?? ""}
+            />
+            <p className="text-[11px] text-slate-500">
+              Taboola Account ID from Backstage (e.g. taboola-network-...)
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`clientId-${account.id}`}>Client ID</Label>
+              <Label htmlFor={`clientId-${account.id}`}>Client ID *</Label>
               <Input
                 id={`clientId-${account.id}`}
                 name="clientId"
@@ -163,7 +178,7 @@ function AccountRow({ account }: { account: TaboolaAccountOption }) {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`clientSecret-${account.id}`}>Client Secret</Label>
+              <Label htmlFor={`clientSecret-${account.id}`}>Client Secret *</Label>
               <Input
                 id={`clientSecret-${account.id}`}
                 name="clientSecret"

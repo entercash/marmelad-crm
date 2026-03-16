@@ -200,13 +200,8 @@ export async function saveTaboolaAccountSettings(
     }
   }
 
-  // Save Taboola Account ID to Account.externalId
-  await prisma.account.update({
-    where: { id: accountId },
-    data: { externalId: taboolaAccountId },
-  });
-
   const prefix = `taboola.${accountId}`;
+  await setSetting(`${prefix}.taboolaAccountId`, taboolaAccountId);
   await setSetting(`${prefix}.clientId`, clientId);
   await setSetting(`${prefix}.clientSecret`, clientSecret);
   await setSetting(`${prefix}.proxyUrl`, proxyUrl);
@@ -225,24 +220,14 @@ export async function testTaboolaAccountConnection(
 
   const settings = await getTaboolaAccountSettings(accountId);
 
-  if (!settings.clientId || !settings.clientSecret) {
+  if (!settings.taboolaAccountId || !settings.clientId || !settings.clientSecret) {
     return { success: false, error: "Taboola is not configured for this account. Save credentials first." };
-  }
-
-  // Get account's externalId for API calls
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    select: { externalId: true },
-  });
-
-  if (!account?.externalId) {
-    return { success: false, error: "Account has no external ID set" };
   }
 
   const config: TaboolaConfig = {
     clientId: settings.clientId,
     clientSecret: settings.clientSecret,
-    accountId: account.externalId,
+    accountId: settings.taboolaAccountId,
     proxyUrl: settings.proxyUrl ?? undefined,
   };
 

@@ -195,6 +195,7 @@ export async function isKeitaroConfigured(): Promise<boolean> {
 // ─── Taboola-specific helpers ────────────────────────────────────────────────
 
 export interface TaboolaAccountSettingsData {
+  taboolaAccountId: string | null;
   clientId: string | null;
   clientSecret: string | null;
   proxyUrl: string | null;
@@ -208,6 +209,7 @@ export async function getTaboolaAccountSettings(
   const settings = await getSettings(prefix);
 
   return {
+    taboolaAccountId: settings[`${prefix}taboolaAccountId`] || null,
     clientId: settings[`${prefix}clientId`] || null,
     clientSecret: settings[`${prefix}clientSecret`] || null,
     proxyUrl: settings[`${prefix}proxyUrl`] || null,

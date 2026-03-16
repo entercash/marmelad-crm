@@ -22,6 +22,7 @@ export type TaboolaAccountOption = {
   name: string;
   externalId: string | null;
   connected: boolean;
+  taboolaAccountId: string;
   clientId: string;
   clientSecret: string;
   proxyUrl: string;
@@ -158,7 +159,7 @@ function AccountRow({ account }: { account: TaboolaAccountOption }) {
               type="text"
               placeholder="taboola-network-abcdef1234"
               required
-              defaultValue={account.externalId ?? ""}
+              defaultValue={account.taboolaAccountId}
             />
             <p className="text-[11px] text-slate-500">
               Taboola Account ID from Backstage (e.g. taboola-network-...)

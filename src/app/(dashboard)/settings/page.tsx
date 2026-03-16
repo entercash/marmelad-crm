@@ -39,6 +39,7 @@ export default async function SettingsPage() {
         name: a.name,
         externalId: a.externalId,
         connected: connectedIds.has(a.id),
+        taboolaAccountId: settings?.taboolaAccountId ?? "",
         clientId: settings?.clientId ?? "",
         clientSecret: settings?.clientSecret ?? "",
         proxyUrl: settings?.proxyUrl ?? "",

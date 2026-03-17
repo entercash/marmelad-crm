@@ -59,10 +59,10 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
     }
 
     try {
-      // Get account name for logging
+      // Get account name + currency for logging
       const account = await prisma.account.findUnique({
         where: { id: accountId },
-        select: { name: true },
+        select: { name: true, currency: true },
       });
 
       const client = new TaboolaClient(config);
@@ -105,16 +105,19 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
       let created = 0;
       let updated = 0;
 
-      for (const c of response.results) {
-        const statusMap: Record<string, string> = {
-          RUNNING: "ACTIVE",
-          PAUSED: "PAUSED",
-          STOPPED: "STOPPED",
-          DISABLED: "STOPPED",
-          PENDING_APPROVAL: "PAUSED",
-          ARCHIVED: "ARCHIVED",
-        };
+      const statusMap: Record<string, string> = {
+        RUNNING: "ACTIVE",
+        PAUSED: "PAUSED",
+        STOPPED: "STOPPED",
+        DISABLED: "STOPPED",
+        PENDING_APPROVAL: "PENDING_REVIEW",
+        REJECTED: "REJECTED",
+        ARCHIVED: "ARCHIVED",
+      };
 
+      const accountCurrency = account?.currency ?? "USD";
+
+      for (const c of response.results) {
         const existing = await prisma.campaign.findUnique({
           where: {
             trafficSourceId_externalId: {
@@ -126,7 +129,8 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
         const data = {
           name: c.name,
-          status: (statusMap[c.status] ?? "ACTIVE") as "ACTIVE" | "PAUSED" | "STOPPED" | "ARCHIVED",
+          status: (statusMap[c.status] ?? "ACTIVE") as "ACTIVE" | "PENDING_REVIEW" | "REJECTED" | "PAUSED" | "STOPPED" | "ARCHIVED",
+          currency: accountCurrency,
           dailyBudget: c.daily_budget ?? null,
           cpcBid: c.cpc ?? null,
           lastSyncedAt: new Date(),

@@ -6,7 +6,10 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { getTaboolaConnectedAccountIds } from "@/features/integration-settings/queries";
+import {
+  getTaboolaConnectedAccountIds,
+  getTaboolaAccountSettings,
+} from "@/features/integration-settings/queries";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,7 +106,16 @@ export async function getTaboolaAccounts(): Promise<TaboolaAccountRow[]> {
     }));
   }
 
-  // Fetch campaign counts and spend per adAccount (keyed by externalId)
+  // Build mapping: Account.id → taboolaAccountId (from integration settings)
+  const accountToTaboolaId = new Map<string, string>();
+  for (const accountId of Array.from(connectedIds)) {
+    const settings = await getTaboolaAccountSettings(accountId);
+    if (settings.taboolaAccountId) {
+      accountToTaboolaId.set(accountId, settings.taboolaAccountId);
+    }
+  }
+
+  // Fetch campaign counts per adAccount (keyed by AdAccount.externalId = taboolaAccountId)
   const adAccounts = await prisma.adAccount.findMany({
     where: { trafficSourceId: taboola.id },
     select: {
@@ -115,35 +127,7 @@ export async function getTaboolaAccounts(): Promise<TaboolaAccountRow[]> {
     },
   });
 
-  // Fetch spend aggregates per adAccount
-  const spendAgg = await prisma.campaignStatsDaily.groupBy({
-    by: ["campaignId"],
-    _sum: { spend: true },
-    where: {
-      campaign: { trafficSourceId: taboola.id },
-    },
-  });
-
-  // Map campaignId → adAccount externalId
-  const campaignToAdAccount = new Map<string, string>();
-  const adAccountCampaignIds = await prisma.campaign.findMany({
-    where: { trafficSourceId: taboola.id },
-    select: { id: true, adAccount: { select: { externalId: true } } },
-  });
-  for (const c of adAccountCampaignIds) {
-    campaignToAdAccount.set(c.id, c.adAccount.externalId);
-  }
-
-  // Aggregate spend per adAccount externalId
-  const spendByAdAccountExt = new Map<string, number>();
-  for (const row of spendAgg) {
-    const adAccountExt = campaignToAdAccount.get(row.campaignId);
-    if (!adAccountExt) continue;
-    const current = spendByAdAccountExt.get(adAccountExt) ?? 0;
-    spendByAdAccountExt.set(adAccountExt, current + Number(row._sum.spend ?? 0));
-  }
-
-  // Build adAccount stats map (by externalId)
+  // Build adAccount stats map (by AdAccount.externalId)
   const adAccountStatsMap = new Map<string, { campaignCount: number; activeCount: number }>();
   for (const aa of adAccounts) {
     const activeCount = aa.campaigns.filter((c) => c.status === "ACTIVE").length;
@@ -153,10 +137,39 @@ export async function getTaboolaAccounts(): Promise<TaboolaAccountRow[]> {
     });
   }
 
+  // Fetch spend aggregates per adAccount
+  const spendAgg = await prisma.campaignStatsDaily.groupBy({
+    by: ["campaignId"],
+    _sum: { spend: true },
+    where: {
+      campaign: { trafficSourceId: taboola.id },
+    },
+  });
+
+  // Map campaignId → AdAccount.externalId
+  const campaignToAdAccount = new Map<string, string>();
+  const campaignAdAccounts = await prisma.campaign.findMany({
+    where: { trafficSourceId: taboola.id },
+    select: { id: true, adAccount: { select: { externalId: true } } },
+  });
+  for (const c of campaignAdAccounts) {
+    campaignToAdAccount.set(c.id, c.adAccount.externalId);
+  }
+
+  // Aggregate spend per AdAccount.externalId
+  const spendByAdAccountExt = new Map<string, number>();
+  for (const row of spendAgg) {
+    const adAccountExt = campaignToAdAccount.get(row.campaignId);
+    if (!adAccountExt) continue;
+    const current = spendByAdAccountExt.get(adAccountExt) ?? 0;
+    spendByAdAccountExt.set(adAccountExt, current + Number(row._sum.spend ?? 0));
+  }
+
   return accounts.map((a) => {
-    // Try to match Account.externalId to AdAccount.externalId
-    const adStats = a.externalId ? adAccountStatsMap.get(a.externalId) : undefined;
-    const spend = a.externalId ? (spendByAdAccountExt.get(a.externalId) ?? 0) : 0;
+    // Match via taboolaAccountId from settings → AdAccount.externalId
+    const taboolaId = accountToTaboolaId.get(a.id);
+    const adStats = taboolaId ? adAccountStatsMap.get(taboolaId) : undefined;
+    const spend = taboolaId ? (spendByAdAccountExt.get(taboolaId) ?? 0) : 0;
 
     return {
       id: a.id,
@@ -180,9 +193,11 @@ export async function getTaboolaCampaigns(): Promise<TaboolaCampaignRow[]> {
 
   if (!taboola) return [];
 
+  // Status sort priority: ACTIVE → PENDING_REVIEW → REJECTED → PAUSED → STOPPED → ARCHIVED
+  // Prisma sorts enums by declaration order in schema, so asc gives correct priority
   const campaigns = await prisma.campaign.findMany({
     where: { trafficSourceId: taboola.id },
-    orderBy: { updatedAt: "desc" },
+    orderBy: [{ status: "asc" }, { name: "asc" }],
     take: 200,
     select: {
       id: true,

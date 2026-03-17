@@ -24,6 +24,7 @@ export type TaboolaCampaignStatus =
   | "STOPPED"
   | "DISABLED"
   | "PENDING_APPROVAL"
+  | "REJECTED"
   | "ARCHIVED";
 
 export interface TaboolaCampaign {

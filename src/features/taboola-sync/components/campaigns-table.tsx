@@ -22,10 +22,21 @@ function formatCurrency(value: number, currency = "USD"): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  ACTIVE:   "bg-emerald-500/20 text-emerald-400",
-  PAUSED:   "bg-amber-500/20 text-amber-400",
-  STOPPED:  "bg-red-500/20 text-red-400",
-  ARCHIVED: "bg-slate-500/20 text-slate-400",
+  ACTIVE:         "bg-emerald-500/20 text-emerald-400",
+  PENDING_REVIEW: "bg-blue-500/20 text-blue-400",
+  REJECTED:       "bg-red-500/20 text-red-400",
+  PAUSED:         "bg-amber-500/20 text-amber-400",
+  STOPPED:        "bg-red-500/20 text-red-400",
+  ARCHIVED:       "bg-slate-500/20 text-slate-400",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE:         "Active",
+  PENDING_REVIEW: "Pending Review",
+  REJECTED:       "Rejected",
+  PAUSED:         "Paused",
+  STOPPED:        "Stopped",
+  ARCHIVED:       "Archived",
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -79,7 +90,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
                     STATUS_STYLES[c.status] ?? "bg-slate-500/20 text-slate-400"
                   }`}
                 >
-                  {c.status}
+                  {STATUS_LABELS[c.status] ?? c.status}
                 </span>
               </td>
               <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-slate-300">

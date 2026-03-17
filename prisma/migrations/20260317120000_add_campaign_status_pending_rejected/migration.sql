@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "CampaignStatus" ADD VALUE 'PENDING_REVIEW';
+ALTER TYPE "CampaignStatus" ADD VALUE 'REJECTED';

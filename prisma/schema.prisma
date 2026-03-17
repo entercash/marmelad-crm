@@ -38,6 +38,8 @@ enum SyncStatus {
 /// Lifecycle status of a campaign synced from a traffic source.
 enum CampaignStatus {
   ACTIVE
+  PENDING_REVIEW
+  REJECTED
   PAUSED
   STOPPED
   ARCHIVED

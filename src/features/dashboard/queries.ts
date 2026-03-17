@@ -385,7 +385,7 @@ export async function getDashboardAlerts(): Promise<DashboardAlert[]> {
                COUNT(*) as "daysNegative"
         FROM "pnl_daily" p
         JOIN "campaign_mappings" cm ON cm."id" = p."campaignMappingId"
-        JOIN "campaigns" c ON c."externalId" = cm."taboolaCampaignExternalId"
+        JOIN "campaigns" c ON c."id" = cm."spendCampaignId"
         WHERE p."date" >= CURRENT_DATE - INTERVAL '3 days'
           AND p."grossProfit" < 0
           AND p."spend" > 0

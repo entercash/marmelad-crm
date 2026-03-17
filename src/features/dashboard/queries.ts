@@ -8,12 +8,13 @@
  *   4. Result    — Received − Spent
  *   5. Conversions / CPA — count & cost per acquisition
  *
- * Additional dashboard queries: time series, top agencies, account spend, alerts.
+ * Data source: campaign_stats_daily (via Taboola API sync).
  * Called only from the Dashboard Server Component — never imported by client code.
  */
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ACCT_MULT_CTE } from "@/lib/spend-queries";
 import { getAccounts } from "@/features/ad-accounts/queries";
 import { getCampaignLinkStats, getCampaignLinkDailyRevenue } from "@/features/campaign-links/queries";
 import { getExpenseSummary } from "@/features/expenses/queries";
@@ -68,21 +69,6 @@ const EMPTY_SUMMARY: DashboardSummary = {
   spent: 0, received: 0, roi: null, result: 0, conversions: 0, cpa: null,
 };
 
-// ─── Shared: acct_mult CTE ──────────────────────────────────────────────────
-
-const ACCT_MULT_CTE = Prisma.sql`
-  WITH acct_mult AS (
-    SELECT DISTINCT ON (a."externalId")
-      a."externalId",
-      (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
-      (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) as multiplier
-    FROM "accounts" a
-    LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
-    WHERE a."externalId" IS NOT NULL
-    ORDER BY a."externalId"
-  )
-`;
-
 // ─── Ad spend with commissions (total) ──────────────────────────────────────
 
 async function getDashboardAdSpend(
@@ -90,15 +76,17 @@ async function getDashboardAdSpend(
   dateTo?: string,
 ): Promise<number> {
   const dateClause = dateFrom && dateTo
-    ? Prisma.sql`WHERE t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`
+    ? Prisma.sql`WHERE csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
     : Prisma.empty;
 
   const rows = await prisma.$queryRaw<{ total: Prisma.Decimal }[]>(
     Prisma.sql`
       ${ACCT_MULT_CTE}
-      SELECT COALESCE(SUM(t."spentUsd" * COALESCE(am.multiplier, 1)), 0) as total
-      FROM "taboola_csv_rows" t
-      LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
+      SELECT COALESCE(SUM(csd."spend" * COALESCE(am.multiplier, 1)), 0) as total
+      FROM "campaign_stats_daily" csd
+      JOIN "campaigns" c ON c."id" = csd."campaignId"
+      JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+      LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
       ${dateClause}
     `,
   );
@@ -173,7 +161,7 @@ export async function getDashboardTimeSeries(
 ): Promise<DashboardTimePoint[]> {
   try {
     const dateClause = dateFrom && dateTo
-      ? Prisma.sql`WHERE t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`
+      ? Prisma.sql`WHERE csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
       : Prisma.empty;
 
     const dateFilter = dateFrom && dateTo
@@ -186,13 +174,15 @@ export async function getDashboardTimeSeries(
     >(
       Prisma.sql`
         ${ACCT_MULT_CTE}
-        SELECT t."day"::text as date,
-               SUM(t."spentUsd" * COALESCE(am.multiplier, 1)) as spend
-        FROM "taboola_csv_rows" t
-        LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
+        SELECT csd."date"::text as date,
+               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as spend
+        FROM "campaign_stats_daily" csd
+        JOIN "campaigns" c ON c."id" = csd."campaignId"
+        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+        LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
         ${dateClause}
-        GROUP BY t."day"
-        ORDER BY t."day"
+        GROUP BY csd."date"
+        ORDER BY csd."date"
       `,
     );
 
@@ -277,7 +267,7 @@ export async function getTopAgenciesBySpend(
 ): Promise<AgencySpendRow[]> {
   try {
     const dateClause = dateFrom && dateTo
-      ? Prisma.sql`AND t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`
+      ? Prisma.sql`AND csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
       : Prisma.empty;
 
     const rows = await prisma.$queryRaw<
@@ -286,10 +276,12 @@ export async function getTopAgenciesBySpend(
       Prisma.sql`
         ${ACCT_MULT_CTE}
         SELECT ag."name" as "agencyName",
-               SUM(t."spentUsd" * COALESCE(am.multiplier, 1)) as "totalSpend"
-        FROM "taboola_csv_rows" t
-        LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
-        JOIN "accounts" a ON a."externalId" = t."accountExternalId"
+               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as "totalSpend"
+        FROM "campaign_stats_daily" csd
+        JOIN "campaigns" c ON c."id" = csd."campaignId"
+        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+        LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
+        JOIN "accounts" a ON a."externalId" = aa."externalId"
         JOIN "agencies" ag ON ag."id" = a."agencyId"
         WHERE a."agencyId" IS NOT NULL ${dateClause}
         GROUP BY ag."id", ag."name"
@@ -321,7 +313,7 @@ export async function getSpendByAccount(
 ): Promise<AccountSpendRow[]> {
   try {
     const dateClause = dateFrom && dateTo
-      ? Prisma.sql`WHERE t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`
+      ? Prisma.sql`WHERE csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
       : Prisma.empty;
 
     const rows = await prisma.$queryRaw<
@@ -331,10 +323,12 @@ export async function getSpendByAccount(
         ${ACCT_MULT_CTE}
         SELECT a."name" as "accountName",
                ag."name" as "agencyName",
-               SUM(t."spentUsd" * COALESCE(am.multiplier, 1)) as "totalSpend"
-        FROM "taboola_csv_rows" t
-        LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
-        JOIN "accounts" a ON a."externalId" = t."accountExternalId"
+               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as "totalSpend"
+        FROM "campaign_stats_daily" csd
+        JOIN "campaigns" c ON c."id" = csd."campaignId"
+        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+        LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
+        JOIN "accounts" a ON a."externalId" = aa."externalId"
         LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
         ${dateClause}
         GROUP BY a."id", a."name", ag."name"

@@ -131,22 +131,23 @@ export async function getAccounts(): Promise<AccountRow[]> {
       .map((r) => r.externalId)
       .filter((id): id is string => id !== null && id !== "");
 
-    // Sum native spend AND pre-converted USD spend from CSV per accountExternalId
+    // Sum spend from campaign_stats_daily via AdAccount bridge (already in USD)
     let spendMap: Record<string, { native: number; usd: number }> = {};
     if (externalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { accountExternalId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
+        { externalId: string; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT "accountExternalId",
-               SUM("spent")    as "totalNative",
-               SUM("spentUsd") as "totalUsd"
-        FROM "taboola_csv_rows"
-        WHERE "accountExternalId" IN (${Prisma.join(externalIds)})
-        GROUP BY "accountExternalId"
+        SELECT aa."externalId",
+               SUM(csd."spend") as "totalUsd"
+        FROM "campaign_stats_daily" csd
+        JOIN "campaigns" c ON c."id" = csd."campaignId"
+        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+        WHERE aa."externalId" IN (${Prisma.join(externalIds)})
+        GROUP BY aa."externalId"
       `;
       for (const sr of spendRows) {
-        spendMap[sr.accountExternalId] = {
-          native: Number(sr.totalNative),
+        spendMap[sr.externalId] = {
+          native: Number(sr.totalUsd), // Already converted to USD during sync
           usd:    Number(sr.totalUsd),
         };
       }

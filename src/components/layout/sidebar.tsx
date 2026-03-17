@@ -12,7 +12,6 @@ import {
   CreditCard,
   Wallet,
   FileCheck2,
-  FileUp,
   Zap,
   Search,
   Settings,
@@ -55,7 +54,6 @@ const navigation: NavGroup[] = [
     label: "Integrations",
     items: [
       { label: "Taboola",     href: "/integrations/taboola",     icon: BarChart3 },
-      { label: "Taboola CSV", href: "/integrations/taboola-csv", icon: FileUp },
       { label: "Keitaro",     href: "/integrations/keitaro",     icon: Zap },
       { label: "SEO",         href: "/integrations/seo",         icon: Search },
     ],

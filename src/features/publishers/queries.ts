@@ -1,11 +1,11 @@
 /**
- * Publishers data-access layer (v2 — CSV aggregation).
+ * Publishers data-access layer (v3 — API-synced tables).
  *
- * Aggregates Taboola CSV import data per site/publisher with:
- *   - Commission-adjusted spend (account → agency → multiplier)
- *   - Keitaro leads matched via campaign_id + sub_id_1 (= Taboola site ID)
+ * Aggregates publisher_stats_daily (from Taboola API sync) with:
+ *   - Commission-adjusted spend (AdAccount → Account → Agency chain)
+ *   - Keitaro leads matched via CampaignLink → campaign_id + sub_id_1
  *   - Revenue calculated from CampaignLink payment model (CPL/CPA)
- *   - Country filtering via CampaignLink.country (Keitaro) + TaboolaCsvRow.countryCode (Taboola)
+ *   - Country filtering via publisher_stats_daily.geo + CampaignLink.country
  *
  * Called only from the Publishers Server Component — never imported by client code.
  */
@@ -14,6 +14,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { ACCT_MULT_CTE } from "@/lib/spend-queries";
 import { CRM_TIMEZONE, todayCrm, toApiDate } from "@/lib/date";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -67,34 +68,45 @@ type CampaignLinkInfo = {
   cplRate: number | null;
 };
 
+// ─── Country code → name mapping ────────────────────────────────────────────
+
+const COUNTRY_NAMES: Record<string, string> = {
+  US: "United States", GB: "United Kingdom", FR: "France", DE: "Germany",
+  CA: "Canada", AU: "Australia", IT: "Italy", ES: "Spain", NL: "Netherlands",
+  BR: "Brazil", IN: "India", JP: "Japan", IL: "Israel", MX: "Mexico",
+  PL: "Poland", SE: "Sweden", TR: "Turkey", HK: "Hong Kong", RU: "Russia",
+  UA: "Ukraine", KR: "South Korea", TH: "Thailand", PH: "Philippines",
+  ID: "Indonesia", ZA: "South Africa", NZ: "New Zealand", IE: "Ireland",
+  AT: "Austria", CH: "Switzerland", BE: "Belgium", PT: "Portugal",
+  NO: "Norway", DK: "Denmark", FI: "Finland", CZ: "Czech Republic",
+  RO: "Romania", HU: "Hungary", GR: "Greece", AR: "Argentina",
+  CL: "Chile", CO: "Colombia", PE: "Peru", MY: "Malaysia", SG: "Singapore",
+  AE: "UAE", SA: "Saudi Arabia", EG: "Egypt", NG: "Nigeria", KE: "Kenya",
+};
+
 // ─── Dropdown queries ───────────────────────────────────────────────────────
 
-/** Get distinct countries from CSV data for the filter dropdown. */
+/** Get distinct countries from publisher_stats_daily for the filter dropdown. */
 export async function getDistinctCountries(): Promise<CountryOption[]> {
-  const rows = await prisma.$queryRaw<
-    { countryCode: string; country: string }[]
-  >`
-    SELECT DISTINCT "countryCode", "country"
-    FROM "taboola_csv_rows"
-    WHERE "countryCode" != ''
-    ORDER BY "country"
+  const rows = await prisma.$queryRaw<{ geo: string }[]>`
+    SELECT DISTINCT "geo"
+    FROM "publisher_stats_daily"
+    WHERE "geo" != 'XX'
+    ORDER BY "geo"
   `;
-  return rows.map((r) => ({ code: r.countryCode, name: r.country }));
+  return rows.map((r) => ({
+    code: r.geo,
+    name: COUNTRY_NAMES[r.geo] || r.geo,
+  }));
 }
 
 // ─── Campaign links for publisher matching ──────────────────────────────────
 
-/**
- * Get CampaignLinks relevant for publisher matching.
- * When country filter is active, only return links for that country.
- */
 async function getCampaignLinksForPublishers(
   country?: string,
 ): Promise<CampaignLinkInfo[]> {
   const where: Prisma.CampaignLinkWhereInput = {};
-  if (country) {
-    where.country = country;
-  }
+  if (country) where.country = country;
 
   const links = await prisma.campaignLink.findMany({
     where,
@@ -116,10 +128,6 @@ async function getCampaignLinksForPublishers(
 
 // ─── Site → campaign associations ───────────────────────────────────────────
 
-/**
- * For a set of sites, find which Taboola campaigns they belong to.
- * Returns Map<siteExternalId, campaignExternalId[]>.
- */
 async function getSiteCampaignAssociations(
   siteExternalIds: string[],
   country?: string,
@@ -128,23 +136,21 @@ async function getSiteCampaignAssociations(
 ): Promise<Map<string, string[]>> {
   if (siteExternalIds.length === 0) return new Map();
 
-  const countryClause = country
-    ? Prisma.sql`AND "countryCode" = ${country}`
-    : Prisma.empty;
-
-  const dateClause = dateFrom && dateTo
-    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
-    : Prisma.empty;
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`p."externalId" IN (${Prisma.join(siteExternalIds)})`,
+  ];
+  if (country) conditions.push(Prisma.sql`psd."geo" = ${country}`);
+  if (dateFrom && dateTo) conditions.push(Prisma.sql`psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`);
 
   const rows = await prisma.$queryRaw<
     { siteExternalId: string; campaignExternalId: string }[]
   >(
     Prisma.sql`
-      SELECT DISTINCT "siteExternalId", "campaignExternalId"
-      FROM "taboola_csv_rows"
-      WHERE "siteExternalId" IN (${Prisma.join(siteExternalIds)})
-      ${countryClause}
-      ${dateClause}
+      SELECT DISTINCT p."externalId" as "siteExternalId", c."externalId" as "campaignExternalId"
+      FROM "publisher_stats_daily" psd
+      JOIN "publishers" p ON p."id" = psd."publisherId"
+      JOIN "campaigns" c ON c."id" = psd."campaignId"
+      WHERE ${Prisma.join(conditions, " AND ")}
     `,
   );
 
@@ -159,11 +165,6 @@ async function getSiteCampaignAssociations(
 
 // ─── Keitaro stats by campaign (campaign-level) ─────────────────────────────
 
-/**
- * Fetch Keitaro stats grouped by campaign_id only (no sub_id).
- * Leads are distributed to sites proportionally by clicks in getPublisherStats.
- * Returns Map keyed by keitaroCampaignExternalId.
- */
 async function getKeitaroStatsByCampaign(
   keitaroExternalIds: number[],
   dateFrom?: string,
@@ -196,7 +197,6 @@ async function getKeitaroStatsByCampaign(
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
-
       map.set(campId, {
         leads: Number(row.conversions ?? 0),
         revenue: Number(row.revenue ?? 0),
@@ -211,7 +211,7 @@ async function getKeitaroStatsByCampaign(
 
 // ─── Click distribution helpers ─────────────────────────────────────────────
 
-/** Get total clicks per Taboola campaign (across ALL sites, for proportional share denominator). */
+/** Total clicks per campaign from campaign_stats_daily. */
 async function getCampaignClickTotals(
   campaignExternalIds: string[],
   dateFrom?: string,
@@ -220,29 +220,28 @@ async function getCampaignClickTotals(
   if (campaignExternalIds.length === 0) return new Map();
 
   const dateClause = dateFrom && dateTo
-    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
+    ? Prisma.sql`AND csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
     : Prisma.empty;
 
   const rows = await prisma.$queryRaw<
-    { campaignExternalId: string; clicks: bigint }[]
+    { externalId: string; clicks: bigint }[]
   >(
     Prisma.sql`
-      SELECT "campaignExternalId", SUM("clicks") as clicks
-      FROM "taboola_csv_rows"
-      WHERE "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
+      SELECT c."externalId", SUM(csd."clicks") as clicks
+      FROM "campaign_stats_daily" csd
+      JOIN "campaigns" c ON c."id" = csd."campaignId"
+      WHERE c."externalId" IN (${Prisma.join(campaignExternalIds)})
         ${dateClause}
-      GROUP BY "campaignExternalId"
+      GROUP BY c."externalId"
     `,
   );
 
   const map = new Map<string, number>();
-  for (const r of rows) {
-    map.set(r.campaignExternalId, Number(r.clicks));
-  }
+  for (const r of rows) map.set(r.externalId, Number(r.clicks));
   return map;
 }
 
-/** Get clicks per site per campaign (for proportional lead distribution to individual sites). */
+/** Clicks per site per campaign from publisher_stats_daily. */
 async function getSiteCampaignClicks(
   siteExternalIds: string[],
   campaignExternalIds: string[],
@@ -252,23 +251,26 @@ async function getSiteCampaignClicks(
   if (siteExternalIds.length === 0 || campaignExternalIds.length === 0) return new Map();
 
   const dateClause = dateFrom && dateTo
-    ? Prisma.sql`AND "day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`
+    ? Prisma.sql`AND psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`
     : Prisma.empty;
 
   const rows = await prisma.$queryRaw<
     { siteExternalId: string; campaignExternalId: string; clicks: bigint }[]
   >(
     Prisma.sql`
-      SELECT "siteExternalId", "campaignExternalId", SUM("clicks") as clicks
-      FROM "taboola_csv_rows"
-      WHERE "siteExternalId" IN (${Prisma.join(siteExternalIds)})
-        AND "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
+      SELECT p."externalId" as "siteExternalId",
+             c."externalId" as "campaignExternalId",
+             SUM(psd."clicks") as clicks
+      FROM "publisher_stats_daily" psd
+      JOIN "publishers" p ON p."id" = psd."publisherId"
+      JOIN "campaigns" c ON c."id" = psd."campaignId"
+      WHERE p."externalId" IN (${Prisma.join(siteExternalIds)})
+        AND c."externalId" IN (${Prisma.join(campaignExternalIds)})
         ${dateClause}
-      GROUP BY "siteExternalId", "campaignExternalId"
+      GROUP BY p."externalId", c."externalId"
     `,
   );
 
-  // Key: "siteExternalId_campaignExternalId" → clicks
   const map = new Map<string, number>();
   for (const r of rows) {
     map.set(`${r.siteExternalId}_${r.campaignExternalId}`, Number(r.clicks));
@@ -278,11 +280,6 @@ async function getSiteCampaignClicks(
 
 // ─── Adspect stats by sub_id (site) ─────────────────────────────────────────
 
-/**
- * Fetch Adspect funnel stats grouped by sub_id (= Taboola site_id).
- * Returns Map<siteExternalId, { botPercent, adspectClicks }>.
- * Returns null when Adspect is not configured or no streams are mapped.
- */
 const ADSPECT_CACHE_TTL = 600; // 10 minutes
 
 type AdspectSiteStats = { botPercent: number; adspectClicks: number };
@@ -295,7 +292,6 @@ async function getAdspectStatsBySite(
   if (siteExternalIds.length === 0) return new Map();
 
   try {
-    // 1. Find CampaignLinks with adspectStreamId set
     const linksWithStreams = await prisma.campaignLink.findMany({
       where: { adspectStreamId: { not: null } },
       select: { adspectStreamId: true },
@@ -305,14 +301,10 @@ async function getAdspectStatsBySite(
     ));
     if (streamIds.length === 0) return null;
 
-    // 2. Check if Adspect is configured
-    const { getAdspectSettings } = await import(
-      "@/features/integration-settings/queries"
-    );
+    const { getAdspectSettings } = await import("@/features/integration-settings/queries");
     const settings = await getAdspectSettings();
     if (!settings.apiKey) return null;
 
-    // 3. Check Redis cache (with 2s timeout — never block page render)
     const df = dateFrom ?? "2024-01-01";
     const dt = dateTo ?? todayCrm();
     const cacheKey = `adspect:funnel:${streamIds.sort().join(",")}:${df}:${dt}`;
@@ -329,21 +321,16 @@ async function getAdspectStatsBySite(
         const entries: [string, AdspectSiteStats][] = JSON.parse(cached);
         return new Map(entries);
       }
-    } catch {
-      // Redis unavailable — skip cache, fetch from API
-    }
+    } catch { /* Redis unavailable */ }
 
-    // 4. Call Adspect funnel API
     const { AdspectClient } = await import("@/integrations/adspect/client");
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const rows = await client.getFunnelBySite({ streamIds, dateFrom: df, dateTo: dt });
 
-    // 5. Build map keyed by sub_id (= site external ID)
     const map = new Map<string, AdspectSiteStats>();
     for (const row of rows) {
       if (!row.sub_id) continue;
       const totalClicks = row.clicks || 0;
-      // quality is 0–1 ratio (e.g. 0.52 = 52% good); bot% = (1 − quality) × 100
       const botPct = totalClicks > 0 ? (1 - row.quality) * 100 : 0;
       map.set(row.sub_id, {
         botPercent: Math.round(botPct * 10) / 10,
@@ -351,7 +338,6 @@ async function getAdspectStatsBySite(
       });
     }
 
-    // 6. Store in Redis cache (fire-and-forget, with timeout)
     if (redisClient) {
       Promise.race([
         redisClient.set(cacheKey, JSON.stringify(Array.from(map.entries())), "EX", ADSPECT_CACHE_TTL),
@@ -368,13 +354,6 @@ async function getAdspectStatsBySite(
 
 // ─── Main stats query ───────────────────────────────────────────────────────
 
-/**
- * Get publisher stats aggregated from TaboolaCsvRow with:
- *   - Commission-adjusted spend via Account → Agency chain
- *   - Keitaro leads matched via CampaignLink → campaign_id + sub_id_1
- *   - Revenue from CampaignLink payment model (CPL: leads × rate, CPA: Keitaro revenue)
- *   - Country filter on both Taboola (countryCode) and Keitaro (CampaignLink.country) sides
- */
 export async function getPublisherStats(params: {
   country?: string;
   page?: number;
@@ -386,98 +365,77 @@ export async function getPublisherStats(params: {
   const { country, page = 1, perPage = 50, dateFrom, dateTo, linkedOnly } = params;
   const offset = (page - 1) * perPage;
 
-  // If linkedOnly, get campaign external IDs from CampaignLink
+  // If linkedOnly, restrict to campaigns in CampaignLink
   let linkedCampaignIds: string[] | null = null;
   if (linkedOnly) {
     const links = await prisma.campaignLink.findMany({
       select: { taboolaCampaignExternalId: true },
     });
     linkedCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
-    if (linkedCampaignIds.length === 0) {
-      return { rows: [], total: 0 };
-    }
+    if (linkedCampaignIds.length === 0) return { rows: [], total: 0 };
   }
 
+  // Build WHERE conditions for publisher_stats_daily
   const conditions: Prisma.Sql[] = [];
-  if (country) conditions.push(Prisma.sql`"countryCode" = ${country}`);
-  if (dateFrom && dateTo) conditions.push(Prisma.sql`"day" >= ${dateFrom}::date AND "day" <= ${dateTo}::date`);
-  if (linkedCampaignIds) conditions.push(Prisma.sql`"campaignExternalId" IN (${Prisma.join(linkedCampaignIds)})`);
+  if (country) conditions.push(Prisma.sql`psd."geo" = ${country}`);
+  if (dateFrom && dateTo) conditions.push(Prisma.sql`psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`);
+  if (linkedCampaignIds) {
+    conditions.push(Prisma.sql`c."externalId" IN (${Prisma.join(linkedCampaignIds)})`);
+  }
 
-  const countWhereClause = conditions.length > 0
+  const whereClause = conditions.length > 0
     ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
     : Prisma.empty;
 
-  const tConditions: Prisma.Sql[] = [];
-  if (country) tConditions.push(Prisma.sql`t."countryCode" = ${country}`);
-  if (dateFrom && dateTo) tConditions.push(Prisma.sql`t."day" >= ${dateFrom}::date AND t."day" <= ${dateTo}::date`);
-  if (linkedCampaignIds) tConditions.push(Prisma.sql`t."campaignExternalId" IN (${Prisma.join(linkedCampaignIds)})`);
-
-  const whereClause = tConditions.length > 0
-    ? Prisma.sql`WHERE ${Prisma.join(tConditions, " AND ")}`
-    : Prisma.empty;
-
-  // 1. Total count of distinct sites
+  // 1. Total count of distinct publishers
   const countRows = await prisma.$queryRaw<RawCountRow[]>(
     Prisma.sql`
-      SELECT COUNT(DISTINCT "siteExternalId") as total
-      FROM "taboola_csv_rows"
-      ${countWhereClause}
+      SELECT COUNT(DISTINCT p."externalId") as total
+      FROM "publisher_stats_daily" psd
+      JOIN "publishers" p ON p."id" = psd."publisherId"
+      JOIN "campaigns" c ON c."id" = psd."campaignId"
+      ${whereClause}
     `,
   );
   const total = Number(countRows[0]?.total ?? 0);
+  if (total === 0) return { rows: [], total: 0 };
 
-  if (total === 0) {
-    return { rows: [], total: 0 };
-  }
-
-  // 2. Aggregated stats per site WITH commission-adjusted spend
-  //    CTE computes per-account multiplier: (1 + commPct/100) × (1 + cryptoPct/100)
-  //    Main query applies multiplier per CSV row before SUM
+  // 2. Aggregated stats per publisher with commission-adjusted spend
   const rawRows = await prisma.$queryRaw<RawStatsRow[]>(
     Prisma.sql`
-      WITH acct_mult AS (
-        SELECT DISTINCT ON (a."externalId")
-          a."externalId",
-          (1 + COALESCE(ag."commissionPercent", 0) / 100) *
-          (1 + COALESCE(ag."cryptoPaymentPercent", 0) / 100) as multiplier
-        FROM "accounts" a
-        LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
-        WHERE a."externalId" IS NOT NULL
-        ORDER BY a."externalId"
-      )
+      ${ACCT_MULT_CTE}
       SELECT
-        t."siteExternalId",
-        MAX(t."siteName") as "siteName",
-        MAX(t."siteUrl") as "siteUrl",
-        COALESCE(SUM(t."clicks"), 0) as "clicks",
-        COALESCE(SUM(t."impressions"), 0) as "impressions",
-        COALESCE(SUM(t."spentUsd" * COALESCE(am.multiplier, 1)), 0) as "spend"
-      FROM "taboola_csv_rows" t
-      LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
+        p."externalId" as "siteExternalId",
+        p."name" as "siteName",
+        p."domain" as "siteUrl",
+        COALESCE(SUM(psd."clicks"), 0) as "clicks",
+        COALESCE(SUM(psd."impressions"), 0) as "impressions",
+        COALESCE(SUM(psd."spend" * COALESCE(am.multiplier, 1)), 0) as "spend"
+      FROM "publisher_stats_daily" psd
+      JOIN "publishers" p ON p."id" = psd."publisherId"
+      JOIN "campaigns" c ON c."id" = psd."campaignId"
+      JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+      LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
       ${whereClause}
-      GROUP BY t."siteExternalId"
-      ORDER BY SUM(t."spentUsd" * COALESCE(am.multiplier, 1)) DESC
+      GROUP BY p."externalId", p."name", p."domain"
+      ORDER BY SUM(psd."spend" * COALESCE(am.multiplier, 1)) DESC
       LIMIT ${perPage} OFFSET ${offset}
     `,
   );
 
-  // 3. Get CampaignLinks (filtered by country for Keitaro side)
+  // 3. Get CampaignLinks (filtered by country)
   const links = await getCampaignLinksForPublishers(country);
   const linkByTaboolaCampaign = new Map(
     links.map((l) => [l.taboolaCampaignExternalId, l]),
   );
 
-  // 4. For sites on this page, find which campaigns they belong to
+  // 4. Site → campaign associations
   const siteIds = rawRows.map((r) => r.siteExternalId);
   const siteCampaigns = await getSiteCampaignAssociations(siteIds, country, dateFrom, dateTo);
 
-  // 5. Fetch Keitaro stats at campaign level + click distribution data
-  const keitaroExternalIds = Array.from(
-    new Set(links.map((l) => l.keitaroCampaignExternalId)),
-  );
-  const linkedTaboolaCampaignIds = Array.from(
-    new Set(links.map((l) => l.taboolaCampaignExternalId)),
-  );
+  // 5. Keitaro + click distribution + Adspect
+  const keitaroExternalIds = Array.from(new Set(links.map((l) => l.keitaroCampaignExternalId)));
+  const linkedTaboolaCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
 
   const [keitaroStats, campaignClickTotals, siteCampaignClickMap, adspectStats] =
     await Promise.all([
@@ -487,7 +445,7 @@ export async function getPublisherStats(params: {
       getAdspectStatsBySite(siteIds, dateFrom, dateTo),
     ]);
 
-  // Build: keitaroCampaignExternalId → total Taboola clicks (denominator for proportional share)
+  // Keitaro campaign total clicks (denominator for proportional share)
   const keitaroCampaignTotalClicks = new Map<number, number>();
   for (const link of links) {
     const kid = link.keitaroCampaignExternalId;
@@ -495,7 +453,7 @@ export async function getPublisherStats(params: {
     keitaroCampaignTotalClicks.set(kid, (keitaroCampaignTotalClicks.get(kid) ?? 0) + tc);
   }
 
-  // 6. Merge Taboola + Keitaro + Adspect data
+  // 6. Merge Taboola + Keitaro + Adspect
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
     const clicks = Number(r.clicks);
     const impressions = Number(r.impressions);
@@ -503,7 +461,6 @@ export async function getPublisherStats(params: {
     const cpc = clicks > 0 ? spend / clicks : null;
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : null;
 
-    // Sum leads and revenue across campaigns for this site (proportional by clicks)
     let totalLeads = 0;
     let totalRevenue = 0;
     let hasKeitaroData = false;
@@ -515,16 +472,13 @@ export async function getPublisherStats(params: {
 
       const ks = keitaroStats?.get(link.keitaroCampaignExternalId);
       if (!ks) continue;
-
       hasKeitaroData = true;
 
-      // Proportional share: site clicks in this campaign / total clicks for the Keitaro campaign
       const siteClicks = siteCampaignClickMap.get(`${r.siteExternalId}_${campaignExternalId}`) ?? 0;
       const totalClicks = keitaroCampaignTotalClicks.get(link.keitaroCampaignExternalId) ?? 0;
       const share = totalClicks > 0 ? siteClicks / totalClicks : 0;
 
       totalLeads += ks.leads * share;
-
       if (link.paymentModel === "CPL" && link.cplRate !== null) {
         totalRevenue += ks.leads * share * link.cplRate;
       } else if (link.paymentModel === "CPA") {
@@ -535,18 +489,12 @@ export async function getPublisherStats(params: {
     const leads = hasKeitaroData ? totalLeads : null;
     const revenue = hasKeitaroData ? totalRevenue : null;
     const profit = revenue !== null ? revenue - spend : null;
-    const roi =
-      revenue !== null && spend > 0
-        ? ((revenue - spend) / spend) * 100
-        : null;
+    const roi = revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null;
 
-    // Adspect data — sub_id may be siteExternalId (new), siteName, or domain from siteUrl (legacy)
+    // Adspect: match by siteExternalId, then siteName, then domain
     let adspect = adspectStats?.get(r.siteExternalId) ?? adspectStats?.get(r.siteName) ?? null;
     if (!adspect && r.siteUrl && adspectStats) {
-      try {
-        const hostname = new URL(r.siteUrl.startsWith("http") ? r.siteUrl : `https://${r.siteUrl}`).hostname;
-        adspect = adspectStats.get(hostname) ?? null;
-      } catch { /* invalid URL */ }
+      adspect = adspectStats.get(r.siteUrl) ?? null;
     }
     const botPercent = adspect?.botPercent ?? null;
     const clickDiscrepancy = adspect ? clicks - adspect.adspectClicks : null;
@@ -555,17 +503,9 @@ export async function getPublisherStats(params: {
       siteExternalId: r.siteExternalId,
       siteName: r.siteName,
       siteUrl: r.siteUrl,
-      clicks,
-      impressions,
-      spend,
-      cpc,
-      ctr,
-      leads,
-      revenue,
-      profit,
-      roi,
-      botPercent,
-      clickDiscrepancy,
+      clicks, impressions, spend, cpc, ctr,
+      leads, revenue, profit, roi,
+      botPercent, clickDiscrepancy,
     };
   });
 
@@ -575,22 +515,15 @@ export async function getPublisherStats(params: {
 // ─── Daily trends for sparklines ─────────────────────────────────────────────
 
 export type SiteTrends = {
-  roiTrend: number[];   // daily ROI values (7 points)
-  botTrend: number[];   // daily bot% values (7 points)
+  roiTrend: number[];
+  botTrend: number[];
 };
 
-/**
- * Fetch last-7-day daily ROI and bot% per site for sparkline rendering.
- * Runs independently from the main stats query (fixed 7-day window).
- *
- * Returns Map<siteExternalId, SiteTrends>.
- */
 export async function getPublisherDailyTrends(
   siteExternalIds: string[],
 ): Promise<Map<string, SiteTrends>> {
   if (siteExternalIds.length === 0) return new Map();
 
-  // 7-day window: today - 6 days → today
   const today = todayCrm();
   const todayDate = new Date(`${today}T00:00:00.000Z`);
   const fromDate = new Date(todayDate);
@@ -598,7 +531,6 @@ export async function getPublisherDailyTrends(
   const dateFrom = toApiDate(fromDate);
   const dateTo = today;
 
-  // Build ordered list of 7 days for consistent array indexing
   const dayLabels: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(fromDate);
@@ -606,9 +538,9 @@ export async function getPublisherDailyTrends(
     dayLabels.push(toApiDate(d));
   }
 
-  // 1. Taboola CSV: daily spend + clicks per site (with commission multiplier)
+  // 1. Daily spend + clicks per site from publisher_stats_daily (with commission)
   type RawDailyRow = {
-    day: Date;
+    date: Date;
     siteExternalId: string;
     clicks: bigint;
     spend: unknown;
@@ -616,45 +548,33 @@ export async function getPublisherDailyTrends(
 
   const dailySpend = await prisma.$queryRaw<RawDailyRow[]>(
     Prisma.sql`
-      WITH acct_mult AS (
-        SELECT DISTINCT ON (a."externalId")
-          a."externalId",
-          (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
-          (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100)
-          as multiplier
-        FROM "accounts" a
-        LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
-        WHERE a."externalId" IS NOT NULL
-        ORDER BY a."externalId"
-      )
+      ${ACCT_MULT_CTE}
       SELECT
-        t."day",
-        t."siteExternalId",
-        COALESCE(SUM(t."clicks"), 0) as "clicks",
-        COALESCE(SUM(t."spentUsd" * COALESCE(am.multiplier, 1)), 0) as "spend"
-      FROM "taboola_csv_rows" t
-      LEFT JOIN acct_mult am ON am."externalId" = t."accountExternalId"
-      WHERE t."siteExternalId" IN (${Prisma.join(siteExternalIds)})
-        AND t."day" >= ${dateFrom}::date
-        AND t."day" <= ${dateTo}::date
-      GROUP BY t."day", t."siteExternalId"
+        psd."date",
+        p."externalId" as "siteExternalId",
+        COALESCE(SUM(psd."clicks"), 0) as "clicks",
+        COALESCE(SUM(psd."spend" * COALESCE(am.multiplier, 1)), 0) as "spend"
+      FROM "publisher_stats_daily" psd
+      JOIN "publishers" p ON p."id" = psd."publisherId"
+      JOIN "campaigns" c ON c."id" = psd."campaignId"
+      JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+      LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
+      WHERE p."externalId" IN (${Prisma.join(siteExternalIds)})
+        AND psd."date" >= ${dateFrom}::date
+        AND psd."date" <= ${dateTo}::date
+      GROUP BY psd."date", p."externalId"
     `,
   );
 
-  // Index: Map<siteId, Map<day, { spend, clicks }>>
   const spendByDay = new Map<string, Map<string, { spend: number; clicks: number }>>();
   for (const r of dailySpend) {
-    const day = r.day instanceof Date ? toApiDate(r.day) : String(r.day).slice(0, 10);
+    const day = r.date instanceof Date ? toApiDate(r.date) : String(r.date).slice(0, 10);
     const siteId = r.siteExternalId;
     if (!spendByDay.has(siteId)) spendByDay.set(siteId, new Map());
-    spendByDay.get(siteId)!.set(day, {
-      spend: Number(r.spend),
-      clicks: Number(r.clicks),
-    });
+    spendByDay.get(siteId)!.set(day, { spend: Number(r.spend), clicks: Number(r.clicks) });
   }
 
-  // 2. Keitaro: daily revenue per site (campaign-level, distributed by clicks)
-  //    Map<siteId, Map<day, { leads, revenue }>>
+  // 2. Keitaro daily revenue per site (distributed by clicks)
   const revenueByDay = new Map<string, Map<string, { leads: number; revenue: number }>>();
 
   try {
@@ -680,14 +600,12 @@ export async function getPublisherDailyTrends(
           offset: 0,
         });
 
-        // Daily Keitaro data: Map<keitaroCampaignId, Map<day, { leads, revenue }>>
         const keitaroDailyByCampaign = new Map<number, Map<string, { leads: number; revenue: number }>>();
         const idSet = new Set(keitaroIds);
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
           if (!campId || !day || !idSet.has(campId)) continue;
-
           if (!keitaroDailyByCampaign.has(campId)) keitaroDailyByCampaign.set(campId, new Map());
           keitaroDailyByCampaign.get(campId)!.set(day, {
             leads: Number(row.conversions ?? 0),
@@ -695,14 +613,12 @@ export async function getPublisherDailyTrends(
           });
         }
 
-        // Get click distribution for proportional share (7-day period)
         const linkedTaboolaCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
         const [campClickTotals, siteCampClicks] = await Promise.all([
           getCampaignClickTotals(linkedTaboolaCampaignIds, dateFrom, dateTo),
           getSiteCampaignClicks(siteExternalIds, linkedTaboolaCampaignIds, dateFrom, dateTo),
         ]);
 
-        // Build keitaroCampaignId → total Taboola clicks
         const keitaroCampTotalClicks = new Map<number, number>();
         for (const l of links) {
           const kid = l.keitaroCampaign.externalId;
@@ -710,12 +626,9 @@ export async function getPublisherDailyTrends(
           keitaroCampTotalClicks.set(kid, (keitaroCampTotalClicks.get(kid) ?? 0) + tc);
         }
 
-        const linkByCampaign = new Map(
-          links.map((l) => [l.taboolaCampaignExternalId, l]),
-        );
+        const linkByCampaign = new Map(links.map((l) => [l.taboolaCampaignExternalId, l]));
         const siteCampaigns = await getSiteCampaignAssociations(siteExternalIds, undefined, dateFrom, dateTo);
 
-        // Distribute daily Keitaro data to sites by click share
         for (const siteId of siteExternalIds) {
           const campaigns = siteCampaigns.get(siteId) ?? [];
           for (const campaignExternalId of campaigns) {
@@ -735,17 +648,16 @@ export async function getPublisherDailyTrends(
             const siteDayMap = revenueByDay.get(siteId)!;
 
             for (const [day, data] of Array.from(dailyMap.entries())) {
-              let revenue = 0;
+              let rev = 0;
               if (link.paymentModel === "CPL" && link.cplRate) {
-                revenue = data.leads * share * Number(link.cplRate);
+                rev = data.leads * share * Number(link.cplRate);
               } else if (link.paymentModel === "CPA") {
-                revenue = data.revenue * share;
+                rev = data.revenue * share;
               }
-
               const existing = siteDayMap.get(day) ?? { leads: 0, revenue: 0 };
               siteDayMap.set(day, {
                 leads: existing.leads + data.leads * share,
-                revenue: existing.revenue + revenue,
+                revenue: existing.revenue + rev,
               });
             }
           }
@@ -756,8 +668,7 @@ export async function getPublisherDailyTrends(
     console.error("[getPublisherDailyTrends] Keitaro error:", err);
   }
 
-  // 3. Adspect: daily bot% per site
-  //    Map<siteId, Map<day, botPercent>>
+  // 3. Adspect daily bot%
   const botByDay = new Map<string, Map<string, number>>();
 
   try {
@@ -773,7 +684,6 @@ export async function getPublisherDailyTrends(
       const { getAdspectSettings } = await import("@/features/integration-settings/queries");
       const adSettings = await getAdspectSettings();
       if (adSettings.apiKey) {
-        // Check Redis cache
         const cacheKey = `adspect:daily-funnel:${streamIds.sort().join(",")}:${dateFrom}:${dateTo}`;
         let redisClient: Awaited<typeof import("@/lib/redis")>["redis"] | null = null;
         let cached: string | null = null;
@@ -804,7 +714,6 @@ export async function getPublisherDailyTrends(
             botByDay.get(row.sub_id)!.set(row.date, Math.round(botPct * 10) / 10);
           }
 
-          // Cache result
           if (redisClient) {
             const serializable = Array.from(botByDay.entries()).map(
               ([sid, dm]) => [sid, Array.from(dm.entries())] as [string, [string, number][]]
@@ -821,7 +730,7 @@ export async function getPublisherDailyTrends(
     console.error("[getPublisherDailyTrends] Adspect error:", err);
   }
 
-  // 4. Merge into SiteTrends per siteExternalId
+  // 4. Merge into SiteTrends
   const result = new Map<string, SiteTrends>();
 
   for (const siteId of siteExternalIds) {
@@ -829,7 +738,6 @@ export async function getPublisherDailyTrends(
     const revDays = revenueByDay.get(siteId);
     const botDays = botByDay.get(siteId);
 
-    // ROI trend: need both spend and revenue data
     const roiTrend: number[] = [];
     if (spendDays && revDays) {
       for (const day of dayLabels) {
@@ -838,20 +746,16 @@ export async function getPublisherDailyTrends(
         if (s && s.spend > 0 && r) {
           roiTrend.push(Math.round(((r.revenue - s.spend) / s.spend) * 1000) / 10);
         } else if (s && s.spend > 0) {
-          roiTrend.push(-100); // spend but no revenue = -100% ROI
+          roiTrend.push(-100);
         }
-        // Skip days with no spend (don't push zero — would distort the trend)
       }
     }
 
-    // Bot% trend
     const botTrend: number[] = [];
     if (botDays) {
       for (const day of dayLabels) {
         const bp = botDays.get(day);
-        if (bp !== undefined) {
-          botTrend.push(bp);
-        }
+        if (bp !== undefined) botTrend.push(bp);
       }
     }
 

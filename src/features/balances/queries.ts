@@ -136,7 +136,7 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
       // table may not exist yet
     }
 
-    // Fetch raw USD spend from CSV per account externalId (no commissions)
+    // Fetch raw USD spend from campaign_stats_daily via AdAccount bridge (no commissions)
     const externalIds = accounts
       .map((a) => a.externalId)
       .filter((id): id is string => id !== null && id !== "");
@@ -144,16 +144,18 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
     let spendMap: Record<string, number> = {};
     if (externalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { accountExternalId: string; totalUsd: Prisma.Decimal }[]
+        { externalId: string; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT "accountExternalId",
-               SUM("spentUsd") as "totalUsd"
-        FROM "taboola_csv_rows"
-        WHERE "accountExternalId" IN (${Prisma.join(externalIds)})
-        GROUP BY "accountExternalId"
+        SELECT aa."externalId",
+               SUM(csd."spend") as "totalUsd"
+        FROM "campaign_stats_daily" csd
+        JOIN "campaigns" c ON c."id" = csd."campaignId"
+        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+        WHERE aa."externalId" IN (${Prisma.join(externalIds)})
+        GROUP BY aa."externalId"
       `;
       for (const sr of spendRows) {
-        spendMap[sr.accountExternalId] = Number(sr.totalUsd);
+        spendMap[sr.externalId] = Number(sr.totalUsd);
       }
     }
 

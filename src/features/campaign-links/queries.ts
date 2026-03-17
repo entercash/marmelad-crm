@@ -62,18 +62,24 @@ export type CampaignStatsRow = {
 
 // ─── Dropdown queries ───────────────────────────────────────────────────────
 
-/** Get distinct Taboola campaigns from CSV data (for mapping dropdown). */
+/** Get distinct Taboola campaigns from synced Campaign table (for mapping dropdown). */
 export async function getDistinctTaboolaCampaigns(): Promise<TaboolaCampaignOption[]> {
-  const rows = await prisma.$queryRaw<
-    { campaignExternalId: string; campaignName: string }[]
-  >`
-    SELECT DISTINCT ON ("campaignExternalId")
-      "campaignExternalId",
-      "campaignName"
-    FROM "taboola_csv_rows"
-    ORDER BY "campaignExternalId", "day" DESC
-  `;
-  return rows;
+  const taboola = await prisma.trafficSource.findUnique({
+    where: { slug: "taboola" },
+    select: { id: true },
+  });
+  if (!taboola) return [];
+
+  const campaigns = await prisma.campaign.findMany({
+    where: { trafficSourceId: taboola.id },
+    select: { externalId: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
+  return campaigns.map((c) => ({
+    campaignExternalId: c.externalId,
+    campaignName: c.name,
+  }));
 }
 
 /** Get Keitaro campaigns for mapping dropdown. */
@@ -113,7 +119,7 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
 
 // ─── Stats aggregation ──────────────────────────────────────────────────────
 
-/** Aggregate Taboola stats by campaignExternalId. */
+/** Aggregate Taboola stats by campaign externalId from campaign_stats_daily. */
 async function getTaboolaStatsByCampaign(
   externalIds: string[],
   dateFrom?: string,
@@ -123,31 +129,33 @@ async function getTaboolaStatsByCampaign(
 > {
   if (externalIds.length === 0) return new Map();
 
-  const where: Prisma.TaboolaCsvRowWhereInput = {
-    campaignExternalId: { in: externalIds },
-  };
-  if (dateFrom && dateTo) {
-    where.day = {
-      gte: new Date(`${dateFrom}T00:00:00.000Z`),
-      lte: new Date(`${dateTo}T00:00:00.000Z`),
-    };
-  }
+  const dateClause = dateFrom && dateTo
+    ? Prisma.sql`AND csd."date" >= ${dateFrom}::date AND csd."date" <= ${dateTo}::date`
+    : Prisma.empty;
 
-  const rows = await prisma.taboolaCsvRow.groupBy({
-    by: ["campaignExternalId"],
-    where,
-    _sum: { clicks: true, spentUsd: true, impressions: true },
-  });
+  const rows = await prisma.$queryRaw<
+    { externalId: string; clicks: bigint; spend: Prisma.Decimal; impressions: bigint }[]
+  >`
+    SELECT c."externalId",
+           SUM(csd."clicks")::bigint as clicks,
+           SUM(csd."spend") as spend,
+           SUM(csd."impressions")::bigint as impressions
+    FROM "campaign_stats_daily" csd
+    JOIN "campaigns" c ON c."id" = csd."campaignId"
+    WHERE c."externalId" IN (${Prisma.join(externalIds)})
+    ${dateClause}
+    GROUP BY c."externalId"
+  `;
 
   const map = new Map<
     string,
     { clicks: number; spend: number; impressions: number }
   >();
   for (const r of rows) {
-    map.set(r.campaignExternalId, {
-      clicks: r._sum.clicks ?? 0,
-      spend: Number(r._sum.spentUsd ?? 0),
-      impressions: r._sum.impressions ?? 0,
+    map.set(r.externalId, {
+      clicks: Number(r.clicks),
+      spend: Number(r.spend),
+      impressions: Number(r.impressions),
     });
   }
   return map;
@@ -199,54 +207,28 @@ async function getKeitaroStatsForCampaigns(
   }
 }
 
-/** Get commission multiplier per campaign via CSV account → agency chain. */
+/** Get commission multiplier per campaign via Campaign → AdAccount → Account → Agency chain. */
 async function getCommissionMultipliers(
   campaignExternalIds: string[],
 ): Promise<Map<string, number>> {
   if (campaignExternalIds.length === 0) return new Map();
 
-  // 1. Get accountExternalId for each campaign
-  const campAcctRows = await prisma.$queryRaw<
-    { campaignExternalId: string; accountExternalId: string }[]
+  const rows = await prisma.$queryRaw<
+    { externalId: string; multiplier: number }[]
   >`
-    SELECT DISTINCT ON ("campaignExternalId")
-      "campaignExternalId", "accountExternalId"
-    FROM "taboola_csv_rows"
-    WHERE "campaignExternalId" IN (${Prisma.join(campaignExternalIds)})
-    ORDER BY "campaignExternalId"
+    SELECT c."externalId",
+           (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
+           (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) as multiplier
+    FROM "campaigns" c
+    JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+    LEFT JOIN "accounts" a ON a."externalId" = aa."externalId"
+    LEFT JOIN "agencies" ag ON ag."id" = COALESCE(a."agencyId", aa."agencyId")
+    WHERE c."externalId" IN (${Prisma.join(campaignExternalIds)})
   `;
 
-  // 2. Get accounts with agency commissions
-  const acctExtIdSet = new Set(campAcctRows.map((r) => r.accountExternalId));
-  const acctExtIds = Array.from(acctExtIdSet);
-
-  const accounts = await prisma.account.findMany({
-    where: { externalId: { in: acctExtIds } },
-    select: {
-      externalId: true,
-      commissionPercent: true,
-      cryptoPaymentPercent: true,
-      agency: {
-        select: { commissionPercent: true, cryptoPaymentPercent: true },
-      },
-    },
-  });
-
-  // 3. Build account → multiplier map (account override ?? agency)
-  const acctMultMap = new Map<string, number>();
-  for (const a of accounts) {
-    if (!a.externalId) continue;
-    const commPct = a.commissionPercent ? Number(a.commissionPercent)
-      : (a.agency?.commissionPercent ? Number(a.agency.commissionPercent) : 0);
-    const cryptoPct = a.cryptoPaymentPercent ? Number(a.cryptoPaymentPercent)
-      : (a.agency?.cryptoPaymentPercent ? Number(a.agency.cryptoPaymentPercent) : 0);
-    acctMultMap.set(a.externalId, (1 + commPct / 100) * (1 + cryptoPct / 100));
-  }
-
-  // 4. Map campaign → multiplier
   const result = new Map<string, number>();
-  for (const r of campAcctRows) {
-    result.set(r.campaignExternalId, acctMultMap.get(r.accountExternalId) ?? 1);
+  for (const r of rows) {
+    result.set(r.externalId, Number(r.multiplier));
   }
   return result;
 }

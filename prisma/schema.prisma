@@ -772,6 +772,10 @@ model RawImportBatch {
 // DOMAIN 8b — TABOOLA CSV IMPORT
 // ══════════════════════════════════════════════════════════════════════════════
 
+/// @deprecated — Legacy CSV import table. Kept as data backup only.
+/// All downstream queries now use campaign_stats_daily / publisher_stats_daily / campaign_item_stats_daily.
+/// Safe to drop once API-sourced data is verified in production.
+///
 /// Raw Taboola performance data imported from Dartmatics CSV exports.
 /// Granularity: one row per Ad × Site × Day × Country.
 /// Dedup key: day + campaignExternalId + adExternalId + siteExternalId + countryCode.

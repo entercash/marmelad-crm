@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 
 import { guardWrite } from "@/lib/auth-guard";
 import { TaboolaClient } from "@/integrations/taboola/client";
 import type { TaboolaConfig } from "@/integrations/taboola/client";
+import { fromApiDate } from "@/lib/date";
 import {
   getTaboolaConnectedAccountIds,
   getTaboolaAccountSettings,
@@ -14,8 +16,34 @@ import { prisma } from "@/lib/prisma";
 // ─── Result type ────────────────────────────────────────────────────────────
 
 export type SyncTaboolaResult =
-  | { success: true; accounts: number; totalCampaigns: number }
+  | { success: true; accounts: number; totalCampaigns: number; statsRows: number }
   | { success: false; error: string };
+
+// ─── Currency conversion ────────────────────────────────────────────────────
+
+/** Approximate USD exchange rates for common Taboola currencies. */
+const USD_RATES: Record<string, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.26,
+  HKD: 0.128,
+  ILS: 0.27,
+  BRL: 0.18,
+  JPY: 0.0067,
+  AUD: 0.65,
+  CAD: 0.74,
+  INR: 0.012,
+  MXN: 0.058,
+  PLN: 0.25,
+  SEK: 0.095,
+  TRY: 0.031,
+};
+
+function toUsd(amount: number | null | undefined, currency: string): number | null {
+  if (amount == null || amount === 0) return amount === 0 ? 0 : null;
+  const rate = USD_RATES[currency] ?? 1;
+  return Math.round(amount * rate * 100) / 100;
+}
 
 // ─── Helper: build config from DB settings ──────────────────────────────────
 
@@ -32,11 +60,22 @@ async function buildTaboolaConfig(accountId: string): Promise<TaboolaConfig | nu
   };
 }
 
+// ─── Date helpers ───────────────────────────────────────────────────────────
+
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function daysAgo(n: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d;
+}
+
 // ─── Main action ────────────────────────────────────────────────────────────
 
 /**
- * Sync campaigns for all connected Taboola accounts.
- * Loads credentials from DB, creates a client per account, fetches campaigns.
+ * Sync campaigns + campaign stats (last 30 days) for all connected Taboola accounts.
  */
 export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
   const denied = await guardWrite();
@@ -48,6 +87,7 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
   }
 
   let totalCampaigns = 0;
+  let totalStatsRows = 0;
   let accountsSynced = 0;
   const errors: string[] = [];
 
@@ -59,14 +99,13 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
     }
 
     try {
-      // Get account name + currency for logging
       const account = await prisma.account.findUnique({
         where: { id: accountId },
         select: { name: true, currency: true },
       });
 
       const client = new TaboolaClient(config);
-      const response = await client.getCampaigns();
+      const accountCurrency = account?.currency ?? "USD";
 
       // Resolve traffic source
       const taboola = await prisma.trafficSource.findUniqueOrThrow({
@@ -91,7 +130,10 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
         select: { id: true },
       });
 
-      // Create sync log
+      // ── Step 1: Sync campaigns ──────────────────────────────────────────
+
+      const response = await client.getCampaigns();
+
       const syncLog = await prisma.syncLog.create({
         data: {
           source: "taboola",
@@ -100,10 +142,6 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           startedAt: new Date(),
         },
       });
-
-      // Upsert campaigns
-      let created = 0;
-      let updated = 0;
 
       const statusMap: Record<string, string> = {
         RUNNING: "ACTIVE",
@@ -115,9 +153,25 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
         ARCHIVED: "ARCHIVED",
       };
 
-      const accountCurrency = account?.currency ?? "USD";
+      let created = 0;
+      let updated = 0;
+
+      // Build externalId → internal id map for stats sync
+      const campaignIdMap = new Map<string, string>();
 
       for (const c of response.results) {
+        // Convert daily_budget to USD
+        const dailyBudgetUsd = toUsd(c.daily_budget, accountCurrency);
+
+        const data = {
+          name: c.name,
+          status: (statusMap[c.status] ?? "ACTIVE") as "ACTIVE" | "PENDING_REVIEW" | "REJECTED" | "PAUSED" | "STOPPED" | "ARCHIVED",
+          currency: "USD",
+          dailyBudget: dailyBudgetUsd,
+          cpcBid: c.cpc != null ? toUsd(c.cpc, accountCurrency) : null,
+          lastSyncedAt: new Date(),
+        };
+
         const existing = await prisma.campaign.findUnique({
           where: {
             trafficSourceId_externalId: {
@@ -127,23 +181,12 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           },
         });
 
-        const data = {
-          name: c.name,
-          status: (statusMap[c.status] ?? "ACTIVE") as "ACTIVE" | "PENDING_REVIEW" | "REJECTED" | "PAUSED" | "STOPPED" | "ARCHIVED",
-          currency: accountCurrency,
-          dailyBudget: c.daily_budget ?? null,
-          cpcBid: c.cpc ?? null,
-          lastSyncedAt: new Date(),
-        };
-
         if (existing) {
-          await prisma.campaign.update({
-            where: { id: existing.id },
-            data,
-          });
+          await prisma.campaign.update({ where: { id: existing.id }, data });
+          campaignIdMap.set(c.id, existing.id);
           updated++;
         } else {
-          await prisma.campaign.create({
+          const newCampaign = await prisma.campaign.create({
             data: {
               ...data,
               externalId: c.id,
@@ -151,11 +194,11 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
               adAccountId: adAccount.id,
             },
           });
+          campaignIdMap.set(c.id, newCampaign.id);
           created++;
         }
       }
 
-      // Complete sync log
       await prisma.syncLog.update({
         where: { id: syncLog.id },
         data: {
@@ -168,6 +211,65 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
       });
 
       totalCampaigns += response.results.length;
+
+      // ── Step 2: Sync campaign stats (last 30 days) ────────────────────
+
+      try {
+        const statsResponse = await client.getCampaignStatsDaily({
+          start_date: formatDate(daysAgo(30)),
+          end_date: formatDate(new Date()),
+        });
+
+        // Filter to known campaigns and upsert
+        const processable = statsResponse.results.filter(
+          (row) => campaignIdMap.has(row.campaign_id),
+        );
+
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < processable.length; i += CHUNK_SIZE) {
+          const chunk = processable.slice(i, i + CHUNK_SIZE);
+
+          await prisma.$transaction(
+            chunk.map((row) => {
+              const campaignId = campaignIdMap.get(row.campaign_id)!;
+              const date = fromApiDate(row.date);
+              // Convert spend to USD
+              const spentUsd = (row.spent ?? 0) * (USD_RATES[row.currency] ?? USD_RATES[accountCurrency] ?? 1);
+
+              return prisma.campaignStatsDaily.upsert({
+                where: { campaignId_date: { campaignId, date } },
+                update: {
+                  spend: new Prisma.Decimal(Math.round(spentUsd * 100) / 100),
+                  clicks: row.clicks,
+                  impressions: row.impressions,
+                  cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
+                  cpm: row.cpm != null ? new Prisma.Decimal(row.cpm) : null,
+                  ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                  currency: "USD",
+                },
+                create: {
+                  campaignId,
+                  date,
+                  spend: new Prisma.Decimal(Math.round(spentUsd * 100) / 100),
+                  clicks: row.clicks,
+                  impressions: row.impressions,
+                  cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
+                  cpm: row.cpm != null ? new Prisma.Decimal(row.cpm) : null,
+                  ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                  currency: "USD",
+                },
+                select: { id: true },
+              });
+            }),
+          );
+        }
+
+        totalStatsRows += processable.length;
+      } catch (statsErr) {
+        // Don't fail the whole sync if stats fail
+        console.error(`[taboola:stats] Failed to sync stats for ${account?.name}:`, statsErr);
+      }
+
       accountsSynced++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -185,5 +287,5 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
     return { success: false, error: errors.join("; ") };
   }
 
-  return { success: true, accounts: accountsSynced, totalCampaigns };
+  return { success: true, accounts: accountsSynced, totalCampaigns, statsRows: totalStatsRows };
 }

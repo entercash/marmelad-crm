@@ -99,6 +99,15 @@ function extractDomain(siteName: string): string | null {
   }
 }
 
+// ─── Dynamic field accessors (Taboola API field names vary by endpoint) ──────
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const dyn = (row: any, ...keys: string[]): string | undefined => {
+  for (const k of keys) if (row[k] != null) return String(row[k]);
+  return undefined;
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 // ─── Main action ────────────────────────────────────────────────────────────
 
 /**
@@ -147,6 +156,8 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
         where: { slug: "taboola" },
         select: { id: true },
       });
+
+      console.log(`[taboola:sync] Account ${account?.name}: externalId for bridge = ${config.accountId}`);
 
       // Resolve or create AdAccount
       const adAccount = await prisma.adAccount.upsert({
@@ -346,52 +357,74 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
         console.log(`[taboola:publishers] Account ${account?.name}: ${pubResponse.results.length} publisher stat rows`);
 
+        // Debug: log first raw row to verify field names
+        if (pubResponse.results.length > 0) {
+          console.log(`[taboola:publishers] FIRST RAW ROW:`, JSON.stringify(pubResponse.results[0]));
+        }
+
         // Build publisher ID map (auto-create publishers for new sites)
         const publisherIdMap = new Map<string, string>();
         const seenSites = new Set<string>();
 
         for (const row of pubResponse.results) {
-          if (seenSites.has(row.site)) continue;
-          seenSites.add(row.site);
+          const siteKey = dyn(row, "site", "site_id", "publisher");
+          if (!siteKey) {
+            console.log(`[taboola:publishers] Row missing site field:`, JSON.stringify(row));
+            continue;
+          }
+          if (seenSites.has(siteKey)) continue;
+          seenSites.add(siteKey);
 
           const existing = await prisma.publisher.findUnique({
             where: {
               trafficSourceId_externalId: {
                 trafficSourceId: taboola.id,
-                externalId: row.site,
+                externalId: siteKey,
               },
             },
           });
 
           if (existing) {
-            publisherIdMap.set(row.site, existing.id);
+            publisherIdMap.set(siteKey, existing.id);
           } else {
+            const siteName = dyn(row, "site_name", "publisher_name") || siteKey;
             const newPub = await prisma.publisher.create({
               data: {
-                externalId: row.site,
+                externalId: siteKey,
                 trafficSourceId: taboola.id,
-                name: row.site_name || row.site,
-                domain: extractDomain(row.site_name || row.site),
+                name: siteName,
+                domain: extractDomain(siteName),
               },
             });
-            publisherIdMap.set(row.site, newPub.id);
+            publisherIdMap.set(siteKey, newPub.id);
           }
         }
 
         // Upsert publisher stats (filter to rows where campaign is known)
         const pubProcessable = pubResponse.results.filter(
-          (row) => campaignIdMap.has(row.campaign_id) && publisherIdMap.has(row.site),
+          (row) => {
+            const cId = dyn(row, "campaign_id", "campaign");
+            const sId = dyn(row, "site", "site_id", "publisher");
+            return cId && campaignIdMap.has(cId) && sId && publisherIdMap.has(sId);
+          },
         );
 
         console.log(`[taboola:publishers] Processable: ${pubProcessable.length} / ${pubResponse.results.length}`);
+        if (pubProcessable.length === 0 && pubResponse.results.length > 0) {
+          const sample = pubResponse.results[0];
+          const cId = dyn(sample, "campaign_id", "campaign");
+          const sId = dyn(sample, "site", "site_id", "publisher");
+          console.log(`[taboola:publishers] Filter debug: campaign=${cId} inMap=${cId ? campaignIdMap.has(cId) : 'N/A'}, site=${sId} inMap=${sId ? publisherIdMap.has(sId) : 'N/A'}`);
+          console.log(`[taboola:publishers] campaignIdMap keys (first 5):`, Array.from(campaignIdMap.keys()).slice(0, 5));
+        }
 
         const PUB_CHUNK = 50;
         for (let i = 0; i < pubProcessable.length; i += PUB_CHUNK) {
           const chunk = pubProcessable.slice(i, i + PUB_CHUNK);
           await prisma.$transaction(
             chunk.map((row) => {
-              const publisherId = publisherIdMap.get(row.site)!;
-              const campaignId = campaignIdMap.get(row.campaign_id)!;
+              const publisherId = publisherIdMap.get(dyn(row, "site", "site_id", "publisher")!)!;
+              const campaignId = campaignIdMap.get(dyn(row, "campaign_id", "campaign")!)!;
               const date = fromApiDate(extractDate(row.date));
               const geo = row.country && /^[A-Z]{2}$/.test(row.country) ? row.country : "XX";
               const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
@@ -442,10 +475,12 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           BLOCKED: "STOPPED",
         };
 
-        // Fetch items only for active/paused campaigns to limit API calls
+        // Fetch items for active/paused campaigns to limit API calls
+        // Also include campaigns with stats in last 30 days (some may be "STOPPED" but still have recent data)
         const activeCampaignExternalIds = response.results
           .filter((c) => c.status === "RUNNING" || c.status === "PAUSED")
           .map((c) => c.id);
+        console.log(`[taboola:items] Active/paused campaigns for item fetch: ${activeCampaignExternalIds.length}`);
 
         const itemIdMap = new Map<string, string>(); // externalId → internal id
 
@@ -503,9 +538,15 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           });
 
           console.log(`[taboola:items] ${itemStatsResponse.results.length} item stat rows from API`);
+          if (itemStatsResponse.results.length > 0) {
+            console.log(`[taboola:items] FIRST RAW ROW:`, JSON.stringify(itemStatsResponse.results[0]));
+          }
 
           const itemProcessable = itemStatsResponse.results.filter(
-            (row) => itemIdMap.has(row.item_id),
+            (row) => {
+              const iId = dyn(row, "item_id", "item", "content_id");
+              return iId && itemIdMap.has(iId);
+            },
           );
 
           const ITEM_CHUNK = 100;
@@ -513,7 +554,7 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
             const chunk = itemProcessable.slice(i, i + ITEM_CHUNK);
             await prisma.$transaction(
               chunk.map((row) => {
-                const campaignItemId = itemIdMap.get(row.item_id)!;
+                const campaignItemId = itemIdMap.get(dyn(row, "item_id", "item", "content_id")!)!;
                 const date = fromApiDate(extractDate(row.date));
                 const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 

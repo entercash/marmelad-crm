@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Input }  from "@/components/ui/input";
 import { Label }  from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { createCampaignLink } from "../actions";
+import { createCampaignLinks } from "../actions";
 import { PAYMENT_MODELS, PAYMENT_MODEL_LABELS } from "../schema";
 import type { TaboolaCampaignOption, KeitaroCampaignOption, AdspectStreamOption } from "../queries";
 import type { CountryOption } from "@/features/publishers/queries";
@@ -26,6 +26,9 @@ interface Props {
 const selectClass =
   "h-9 w-full rounded-md border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-100 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40";
 
+const checkboxListClass =
+  "max-h-48 overflow-y-auto rounded-md border border-white/10 bg-white/5 p-2 flex flex-col gap-1";
+
 export function CampaignLinkForm({
   taboolaCampaigns,
   keitaroCampaigns,
@@ -38,10 +41,19 @@ export function CampaignLinkForm({
   const [error, setError]           = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paymentModel, setPaymentModel] = useState("CPL");
-  const [campaignName, setCampaignName] = useState("");
+  const [selectedTaboola, setSelectedTaboola] = useState<Set<string>>(new Set());
 
   function fe(field: string) {
     return fieldErrors[field];
+  }
+
+  function toggleTaboola(extId: string) {
+    setSelectedTaboola((prev) => {
+      const next = new Set(prev);
+      if (next.has(extId)) next.delete(extId);
+      else next.add(extId);
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -50,8 +62,23 @@ export function CampaignLinkForm({
     setError(null);
     setFieldErrors({});
 
+    if (selectedTaboola.size === 0) {
+      setError("Select at least one Taboola campaign");
+      setPending(false);
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
-    const result = await createCampaignLink(formData);
+
+    // Build campaign list: externalId → name
+    const campaigns = Array.from(selectedTaboola).map((extId) => {
+      const camp = taboolaCampaigns.find((c) => c.campaignExternalId === extId);
+      return { externalId: extId, name: camp?.campaignName ?? extId };
+    });
+
+    formData.set("taboolaCampaigns", JSON.stringify(campaigns));
+
+    const result = await createCampaignLinks(formData);
 
     setPending(false);
     if (result.success) {
@@ -73,33 +100,38 @@ export function CampaignLinkForm({
         </div>
       )}
 
-      {/* Taboola campaign */}
+      {/* Taboola campaigns — multi-select */}
       <div className="flex flex-col gap-1.5">
-        <Label>Taboola Campaign *</Label>
-        <select
-          name="taboolaCampaignExternalId"
-          required
-          className={selectClass}
-          defaultValue=""
-          onChange={(e) => {
-            const opt = e.target.selectedOptions[0];
-            setCampaignName(opt?.dataset.name ?? "");
-          }}
-        >
-          <option value="" disabled>
-            Select Taboola campaign...
-          </option>
+        <Label>
+          Taboola Campaigns *
+          {selectedTaboola.size > 0 && (
+            <span className="ml-2 text-xs text-slate-400">
+              ({selectedTaboola.size} selected)
+            </span>
+          )}
+        </Label>
+        <div className={checkboxListClass}>
           {taboolaCampaigns.map((c) => (
-            <option
+            <label
               key={c.campaignExternalId}
-              value={c.campaignExternalId}
-              data-name={c.campaignName}
+              className="flex items-center gap-2 rounded px-2 py-1 text-sm text-slate-200 hover:bg-white/5 cursor-pointer"
             >
-              {c.campaignName} ({c.campaignExternalId})
-            </option>
+              <input
+                type="checkbox"
+                checked={selectedTaboola.has(c.campaignExternalId)}
+                onChange={() => toggleTaboola(c.campaignExternalId)}
+                className="rounded border-white/20 bg-white/5"
+              />
+              <span className="truncate">
+                {c.campaignName}
+                <span className="ml-1 text-xs text-slate-400">({c.campaignExternalId})</span>
+              </span>
+            </label>
           ))}
-        </select>
-        <input type="hidden" name="taboolaCampaignName" value={campaignName} />
+          {taboolaCampaigns.length === 0 && (
+            <p className="text-xs text-slate-500 px-2 py-1">No Taboola campaigns synced yet</p>
+          )}
+        </div>
         {fe("taboolaCampaignExternalId") && (
           <p className="text-xs text-red-400">{fe("taboolaCampaignExternalId")}</p>
         )}
@@ -220,7 +252,11 @@ export function CampaignLinkForm({
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Creating..." : "Add Mapping"}
+          {pending
+            ? "Creating..."
+            : selectedTaboola.size > 1
+              ? `Add ${selectedTaboola.size} Mappings`
+              : "Add Mapping"}
         </Button>
       </div>
     </form>

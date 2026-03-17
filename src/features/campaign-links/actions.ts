@@ -80,6 +80,96 @@ export async function createCampaignLink(
   }
 }
 
+// ─── Create (batch — multiple Taboola → 1 Keitaro) ────────────────────────
+
+export async function createCampaignLinks(
+  formData: FormData,
+): Promise<ActionResult> {
+  const denied = await guardWrite();
+  if (denied) return denied;
+
+  const campaignsJson = formData.get("taboolaCampaigns");
+  if (!campaignsJson || typeof campaignsJson !== "string") {
+    return { success: false, error: "No Taboola campaigns selected." };
+  }
+
+  let campaigns: { externalId: string; name: string }[];
+  try {
+    campaigns = JSON.parse(campaignsJson);
+  } catch {
+    return { success: false, error: "Invalid campaign data." };
+  }
+
+  if (campaigns.length === 0) {
+    return { success: false, error: "Select at least one Taboola campaign." };
+  }
+
+  const keitaroCampaignId = formData.get("keitaroCampaignId") as string;
+  const paymentModel = formData.get("paymentModel") as string;
+  const cplRateRaw = (formData.get("cplRate") as string)?.trim() ?? "";
+  const country = (formData.get("country") as string)?.trim() || null;
+  const adspectStreamId = (formData.get("adspectStreamId") as string)?.trim() || null;
+
+  if (!keitaroCampaignId) {
+    return { success: false, error: "Keitaro campaign is required." };
+  }
+  if (!paymentModel || !["CPL", "CPA"].includes(paymentModel)) {
+    return { success: false, error: "Payment model is required." };
+  }
+  if (paymentModel === "CPL") {
+    const num = Number(cplRateRaw);
+    if (!cplRateRaw || Number.isNaN(num) || num <= 0) {
+      return { success: false, error: "CPL rate is required and must be > 0.", fieldErrors: { cplRate: "Required for CPL" } };
+    }
+  }
+
+  const cplRate = paymentModel === "CPL" && cplRateRaw
+    ? new Prisma.Decimal(cplRateRaw)
+    : null;
+
+  try {
+    let created = 0;
+    let skipped = 0;
+
+    for (const camp of campaigns) {
+      try {
+        await prisma.campaignLink.create({
+          data: {
+            taboolaCampaignExternalId: camp.externalId,
+            taboolaCampaignName: camp.name,
+            keitaroCampaignId,
+            paymentModel: paymentModel as "CPL" | "CPA",
+            cplRate,
+            country,
+            adspectStreamId,
+          },
+        });
+        created++;
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002"
+        ) {
+          skipped++; // Already exists — skip
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    revalidatePath("/campaigns");
+
+    if (skipped > 0 && created === 0) {
+      return { success: false, error: `All ${skipped} mappings already exist.` };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("[createCampaignLinks]", err);
+    return { success: false, error: "Failed to create mappings." };
+  }
+}
+
 // ─── Delete ─────────────────────────────────────────────────────────────────
 
 export async function deleteCampaignLink(id: string): Promise<ActionResult> {

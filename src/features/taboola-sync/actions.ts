@@ -134,11 +134,12 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
       const response = await client.getCampaigns();
 
-      // Debug: log raw campaign data
+      // Debug: log raw campaign data with actual field names
       console.log(`[taboola:sync] Account ${account?.name}: ${response.results.length} campaigns from API`);
       if (response.results.length > 0) {
-        const sample = response.results[0];
-        console.log(`[taboola:sync] Sample campaign: id=${sample.id}, daily_budget=${sample.daily_budget}, cpc=${sample.cpc}, status=${sample.status}`);
+        const sample = response.results[0] as unknown as Record<string, unknown>;
+        console.log(`[taboola:sync] Sample campaign keys:`, Object.keys(sample));
+        console.log(`[taboola:sync] Sample campaign (raw):`, JSON.stringify(sample).slice(0, 500));
       }
 
       const syncLog = await prisma.syncLog.create({
@@ -227,11 +228,12 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           end_date: formatDate(new Date()),
         });
 
-        // Debug: log raw stats data
+        // Debug: log raw stats data with actual field names
         console.log(`[taboola:stats] Account ${account?.name}: ${statsResponse.results.length} stat rows from API`);
         if (statsResponse.results.length > 0) {
-          const sample = statsResponse.results[0];
-          console.log(`[taboola:stats] Sample stat row: campaign_id=${sample.campaign_id}, spent=${sample.spent}, currency=${sample.currency}, date=${sample.date}`);
+          const sample = statsResponse.results[0] as unknown as Record<string, unknown>;
+          console.log(`[taboola:stats] Sample stat row keys:`, Object.keys(sample));
+          console.log(`[taboola:stats] Sample stat row (raw):`, JSON.stringify(sample).slice(0, 500));
           console.log(`[taboola:stats] campaignIdMap keys (first 5):`, Array.from(campaignIdMap.keys()).slice(0, 5));
         }
 

@@ -9,6 +9,7 @@ import {
 
 import { PageHeader }      from "@/components/shared/page-header";
 import { StatCard }        from "@/components/shared/stat-card";
+import { SyncButton }      from "@/features/taboola-sync/components/sync-button";
 import { AccountsTable }   from "@/features/taboola-sync/components/accounts-table";
 import { CampaignsTable }  from "@/features/taboola-sync/components/campaigns-table";
 import {
@@ -102,6 +103,13 @@ export default async function TaboolaPage() {
             valueClassName="text-base font-semibold"
           />
         </div>
+      )}
+
+      {/* Sync button */}
+      {configured && (
+        <section>
+          <SyncButton />
+        </section>
       )}
 
       {/* Accounts table */}

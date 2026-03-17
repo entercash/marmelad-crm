@@ -134,6 +134,13 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
       const response = await client.getCampaigns();
 
+      // Debug: log raw campaign data
+      console.log(`[taboola:sync] Account ${account?.name}: ${response.results.length} campaigns from API`);
+      if (response.results.length > 0) {
+        const sample = response.results[0];
+        console.log(`[taboola:sync] Sample campaign: id=${sample.id}, daily_budget=${sample.daily_budget}, cpc=${sample.cpc}, status=${sample.status}`);
+      }
+
       const syncLog = await prisma.syncLog.create({
         data: {
           source: "taboola",
@@ -220,10 +227,19 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           end_date: formatDate(new Date()),
         });
 
+        // Debug: log raw stats data
+        console.log(`[taboola:stats] Account ${account?.name}: ${statsResponse.results.length} stat rows from API`);
+        if (statsResponse.results.length > 0) {
+          const sample = statsResponse.results[0];
+          console.log(`[taboola:stats] Sample stat row: campaign_id=${sample.campaign_id}, spent=${sample.spent}, currency=${sample.currency}, date=${sample.date}`);
+          console.log(`[taboola:stats] campaignIdMap keys (first 5):`, Array.from(campaignIdMap.keys()).slice(0, 5));
+        }
+
         // Filter to known campaigns and upsert
         const processable = statsResponse.results.filter(
           (row) => campaignIdMap.has(row.campaign_id),
         );
+        console.log(`[taboola:stats] Processable rows after filter: ${processable.length} / ${statsResponse.results.length}`);
 
         const CHUNK_SIZE = 100;
         for (let i = 0; i < processable.length; i += CHUNK_SIZE) {

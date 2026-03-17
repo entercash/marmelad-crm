@@ -208,21 +208,21 @@ export class TaboolaClient {
   }
 
   /**
-   * Fetch daily item (creative) performance stats for a date range.
-   * Optionally filtered to a single campaign via campaign_id.
+   * Fetch item (creative) performance stats for a date range.
+   * Returns aggregated data per item (top 1000), NOT daily breakdown.
+   * Optionally filtered to a single campaign via campaign param.
    */
-  async getItemStatsDaily(
+  async getItemStats(
     params: TaboolaDateRangeParams & { campaign_id?: string },
   ): Promise<TaboolaItemStatsResponse> {
     const queryParams: Record<string, string> = {
       start_date: params.start_date,
       end_date: params.end_date,
     };
-    // Taboola's param name for filtering by campaign in item reports is "campaign"
     if (params.campaign_id) queryParams.campaign = params.campaign_id;
 
     return this.get<TaboolaItemStatsResponse>(
-      "/reports/campaign-summary/dimensions/item_day_breakdown",
+      "/reports/top-campaign-content/dimensions/item_breakdown",
       queryParams,
     );
   }
@@ -236,7 +236,7 @@ export class TaboolaClient {
     params: TaboolaDateRangeParams,
   ): Promise<TaboolaPublisherStatsResponse> {
     return this.get<TaboolaPublisherStatsResponse>(
-      "/reports/top-campaign-content/dimensions/campaign_site_day_breakdown",
+      "/reports/campaign-summary/dimensions/campaign_site_day_breakdown",
       { start_date: params.start_date, end_date: params.end_date },
     );
   }

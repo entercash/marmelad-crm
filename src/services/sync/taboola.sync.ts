@@ -15,6 +15,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createTaboolaClient } from "@/integrations/taboola";
+import type { TaboolaItemStatRow } from "@/integrations/taboola";
 import {
   createSyncLog,
   completeSyncLog,
@@ -264,7 +265,7 @@ export async function syncTaboolaItemStatsDaily(
     }
 
     // Fetch stats (all items, all campaigns, all days in range)
-    const response = await client.getItemStatsDaily({
+    const response = await client.getItemStats({
       start_date: params.dateRange.startDate,
       end_date: params.dateRange.endDate,
     });
@@ -273,12 +274,12 @@ export async function syncTaboolaItemStatsDaily(
     const batchId = await writeRawBatch({
       syncLogId,
       source: "taboola",
-      entityType: "item-stats-daily",
+      entityType: "item-stats",
       payload: response,
     });
 
-    const knownRows = response.results.filter((row) =>
-      itemIdMap.has(row.item_id),
+    const knownRows = response.results.filter((row: TaboolaItemStatRow) =>
+      itemIdMap.has(row.item),
     );
     counter.skipped = response.results.length - knownRows.length;
 

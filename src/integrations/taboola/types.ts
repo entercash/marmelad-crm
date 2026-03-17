@@ -88,16 +88,15 @@ export interface TaboolaCampaignStatsResponse {
   recordCount: number;
 }
 
-// ─── Item Stats — item_day_breakdown ─────────────────────────────────────────
-// Endpoint: /reports/campaign-summary/dimensions/item_day_breakdown
+// ─── Item Stats — item_breakdown (aggregated per item, NOT daily) ────────────
+// Endpoint: /reports/top-campaign-content/dimensions/item_breakdown
 
 export interface TaboolaItemStatRow {
-  date: string;           // YYYY-MM-DD
-  campaign_id: string;
-  item_id: string;
-  title: string | null;
-  url: string | null;
+  item: string;             // item ID (API field name)
+  item_name: string;        // creative title
+  campaign: string;         // campaign ID
   thumbnail_url: string | null;
+  url: string | null;
   spent: number;
   clicks: number;
   impressions: number;

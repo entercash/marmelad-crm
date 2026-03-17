@@ -530,9 +530,9 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
         console.log(`[taboola:items] Account ${account?.name}: ${itemIdMap.size} items synced`);
 
-        // Fetch item stats if we have items
+        // Fetch item stats if we have items (aggregated, not daily — use endDate as snapshot date)
         if (itemIdMap.size > 0) {
-          const itemStatsResponse = await client.getItemStatsDaily({
+          const itemStatsResponse = await client.getItemStats({
             start_date: startDate,
             end_date: endDate,
           });
@@ -544,23 +544,25 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
           const itemProcessable = itemStatsResponse.results.filter(
             (row) => {
-              const iId = dyn(row, "item_id", "item", "content_id");
+              const iId = dyn(row, "item", "item_id", "content_id");
               return iId && itemIdMap.has(iId);
             },
           );
+
+          // Item stats are aggregated for the date range, store with endDate as snapshot
+          const snapshotDate = fromApiDate(endDate);
 
           const ITEM_CHUNK = 100;
           for (let i = 0; i < itemProcessable.length; i += ITEM_CHUNK) {
             const chunk = itemProcessable.slice(i, i + ITEM_CHUNK);
             await prisma.$transaction(
               chunk.map((row) => {
-                const campaignItemId = itemIdMap.get(dyn(row, "item_id", "item", "content_id")!)!;
-                const date = fromApiDate(extractDate(row.date));
+                const campaignItemId = itemIdMap.get(dyn(row, "item", "item_id", "content_id")!)!;
                 const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 
                 return prisma.campaignItemStatsDaily.upsert({
                   where: {
-                    campaignItemId_date: { campaignItemId, date },
+                    campaignItemId_date: { campaignItemId, date: snapshotDate },
                   },
                   update: {
                     spend: new Prisma.Decimal(spentUsd),
@@ -572,7 +574,7 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                   },
                   create: {
                     campaignItemId,
-                    date,
+                    date: snapshotDate,
                     spend: new Prisma.Decimal(spentUsd),
                     clicks: row.clicks,
                     impressions: row.impressions,

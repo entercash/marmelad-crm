@@ -356,6 +356,16 @@ export async function getCampaignLinkStats(
     keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, from, to);
   }
 
+  // Build click-share map: when multiple Taboola campaigns → 1 Keitaro,
+  // distribute Keitaro leads/revenue proportionally by Taboola click volume.
+  const keitaroCampaignTotalClicks = new Map<number, number>();
+  for (const link of links) {
+    const ts = taboolaStats.get(link.taboolaCampaignExternalId);
+    const clicks = ts?.clicks ?? 0;
+    const kid = link.keitaroCampaignExternalId;
+    keitaroCampaignTotalClicks.set(kid, (keitaroCampaignTotalClicks.get(kid) ?? 0) + clicks);
+  }
+
   // Merge
   return links.map((link) => {
     const ts = taboolaStats.get(link.taboolaCampaignExternalId);
@@ -364,9 +374,15 @@ export async function getCampaignLinkStats(
     const rawSpend = ts?.spend ?? 0;
     const multiplier = commMultipliers.get(link.taboolaCampaignExternalId) ?? 1;
     const spend = rawSpend * multiplier;
-    const leads = ks?.leads ?? null;
-    const sales = ks?.sales ?? null;
-    const keitaroRevenue = ks?.revenue ?? null;
+
+    // Click-share: this campaign's portion of Keitaro metrics
+    const myClicks = ts?.clicks ?? 0;
+    const totalClicks = keitaroCampaignTotalClicks.get(link.keitaroCampaignExternalId) ?? 0;
+    const share = totalClicks > 0 ? myClicks / totalClicks : 0;
+
+    const leads = ks?.leads != null ? Math.round(ks.leads * share) : null;
+    const sales = ks?.sales != null ? Math.round(ks.sales * share) : null;
+    const keitaroRevenue = ks?.revenue != null ? ks.revenue * share : null;
 
     // CPL = spend / leads
     const cpl = leads && leads > 0 ? spend / leads : null;
@@ -393,7 +409,7 @@ export async function getCampaignLinkStats(
       paymentModel: link.paymentModel,
       cplRate: link.cplRate,
       country: link.country,
-      clicks: ts?.clicks ?? 0,
+      clicks: myClicks,
       spend,
       impressions: ts?.impressions ?? 0,
       leads,

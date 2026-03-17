@@ -162,11 +162,20 @@ async function getTaboolaStatsByCampaign(
 }
 
 /** Fetch Keitaro stats from Reports API for mapped campaigns. Returns null on error. */
+type KeitaroStatsKey = string; // "keitaroCampaignId:taboolaExternalId"
+type KeitaroStatsValue = { clicks: number; leads: number; sales: number; revenue: number };
+
+/**
+ * Fetch Keitaro stats grouped by campaign_id + sub_id.
+ * sub_id contains the Taboola campaign external ID passed via tracking link parameters.
+ * Returns a map keyed by "keitaroCampaignId:taboolaExternalId" for exact matching.
+ */
 async function getKeitaroStatsForCampaigns(
   keitaroExternalIds: number[],
+  taboolaExternalIds: string[],
   dateFrom: string,
   dateTo: string,
-): Promise<Map<number, { clicks: number; leads: number; sales: number; revenue: number }> | null> {
+): Promise<Map<KeitaroStatsKey, KeitaroStatsValue> | null> {
   if (keitaroExternalIds.length === 0) return new Map();
 
   try {
@@ -178,27 +187,42 @@ async function getKeitaroStatsForCampaigns(
       apiKey: settings.apiKey,
     });
 
-    // Fetch all campaigns (IN_LIST filter doesn't work for campaign_id in Keitaro),
-    // then filter results in code.
+    // Group by campaign_id + sub_id to get exact per-Taboola-campaign stats.
+    // sub_id = Taboola campaign external ID (passed via {campaign_id} macro in tracking URL).
     const report = await client.buildReport({
       range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id"],
+      grouping: ["campaign_id", "sub_id"],
       metrics: ["clicks", "conversions", "sales", "revenue"],
-      limit: 10_000,
+      limit: 100_000,
       offset: 0,
     });
 
-    const idSet = new Set(keitaroExternalIds);
-    const map = new Map<number, { clicks: number; leads: number; sales: number; revenue: number }>();
+    const keitaroIdSet = new Set(keitaroExternalIds);
+    const taboolaIdSet = new Set(taboolaExternalIds);
+    const map = new Map<KeitaroStatsKey, KeitaroStatsValue>();
+
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      if (!campId || !idSet.has(campId)) continue;
-      map.set(campId, {
-        clicks: Number(row.clicks ?? 0),
-        leads: Number(row.conversions ?? 0),
-        sales: Number(row.sales ?? 0),
-        revenue: Number(row.revenue ?? 0),
-      });
+      const subId = String(row.sub_id ?? "").trim();
+      if (!campId || !keitaroIdSet.has(campId)) continue;
+      if (!subId || !taboolaIdSet.has(subId)) continue;
+
+      const key = `${campId}:${subId}`;
+      const existing = map.get(key);
+      if (existing) {
+        // Accumulate if there are multiple rows (shouldn't happen with this grouping, but safe)
+        existing.clicks += Number(row.clicks ?? 0);
+        existing.leads += Number(row.conversions ?? 0);
+        existing.sales += Number(row.sales ?? 0);
+        existing.revenue += Number(row.revenue ?? 0);
+      } else {
+        map.set(key, {
+          clicks: Number(row.clicks ?? 0),
+          leads: Number(row.conversions ?? 0),
+          sales: Number(row.sales ?? 0),
+          revenue: Number(row.revenue ?? 0),
+        });
+      }
     }
     return map;
   } catch (err) {
@@ -343,46 +367,30 @@ export async function getCampaignLinkStats(
     getCommissionMultipliers(taboolaIds),
   ]);
 
-  // Keitaro stats
+  // Keitaro stats — grouped by campaign_id + sub_id for exact per-Taboola matching
   const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
   const keitaroIds = Array.from(keitaroIdSet);
   const from = dateFrom ?? "2024-01-01";
   const to = dateTo ?? todayCrm();
-  let keitaroStats: Map<
-    number,
-    { clicks: number; leads: number; sales: number; revenue: number }
-  > | null = null;
+  let keitaroStats: Map<string, KeitaroStatsValue> | null = null;
   if (keitaroIds.length > 0) {
-    keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, from, to);
+    keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, taboolaIds, from, to);
   }
 
-  // Build click-share map: when multiple Taboola campaigns → 1 Keitaro,
-  // distribute Keitaro leads/revenue proportionally by Taboola click volume.
-  const keitaroCampaignTotalClicks = new Map<number, number>();
-  for (const link of links) {
-    const ts = taboolaStats.get(link.taboolaCampaignExternalId);
-    const clicks = ts?.clicks ?? 0;
-    const kid = link.keitaroCampaignExternalId;
-    keitaroCampaignTotalClicks.set(kid, (keitaroCampaignTotalClicks.get(kid) ?? 0) + clicks);
-  }
-
-  // Merge
+  // Merge — exact matching via keitaroCampaignExternalId + taboolaCampaignExternalId
   return links.map((link) => {
     const ts = taboolaStats.get(link.taboolaCampaignExternalId);
-    const ks = keitaroStats?.get(link.keitaroCampaignExternalId) ?? null;
+    // Exact match: Keitaro stats for this specific Taboola campaign via sub_id
+    const ksKey = `${link.keitaroCampaignExternalId}:${link.taboolaCampaignExternalId}`;
+    const ks = keitaroStats?.get(ksKey) ?? null;
 
     const rawSpend = ts?.spend ?? 0;
     const multiplier = commMultipliers.get(link.taboolaCampaignExternalId) ?? 1;
     const spend = rawSpend * multiplier;
 
-    // Click-share: this campaign's portion of Keitaro metrics
-    const myClicks = ts?.clicks ?? 0;
-    const totalClicks = keitaroCampaignTotalClicks.get(link.keitaroCampaignExternalId) ?? 0;
-    const share = totalClicks > 0 ? myClicks / totalClicks : 0;
-
-    const leads = ks?.leads != null ? Math.round(ks.leads * share) : null;
-    const sales = ks?.sales != null ? Math.round(ks.sales * share) : null;
-    const keitaroRevenue = ks?.revenue != null ? ks.revenue * share : null;
+    const leads = ks?.leads ?? null;
+    const sales = ks?.sales ?? null;
+    const keitaroRevenue = ks?.revenue ?? null;
 
     // CPL = spend / leads
     const cpl = leads && leads > 0 ? spend / leads : null;
@@ -409,7 +417,7 @@ export async function getCampaignLinkStats(
       paymentModel: link.paymentModel,
       cplRate: link.cplRate,
       country: link.country,
-      clicks: myClicks,
+      clicks: ts?.clicks ?? 0,
       spend,
       impressions: ts?.impressions ?? 0,
       leads,

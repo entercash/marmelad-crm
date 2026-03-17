@@ -25,7 +25,15 @@ export type KeitaroGroupingField =
   | "day"
   | "sub_id"
   | "sub_id_1"
-  | "sub_id_2";
+  | "sub_id_2"
+  | "sub_id_3"
+  | "sub_id_4"
+  | "sub_id_5"
+  | "sub_id_6"
+  | "sub_id_7"
+  | "sub_id_8"
+  | "sub_id_9"
+  | "sub_id_10";
 
 /** Metric columns available in the Keitaro report builder */
 export type KeitaroMetric =
@@ -77,6 +85,14 @@ export interface KeitaroReportRow {
   sub_id?: string;
   sub_id_1?: string;
   sub_id_2?: string;
+  sub_id_3?: string;
+  sub_id_4?: string;
+  sub_id_5?: string;
+  sub_id_6?: string;
+  sub_id_7?: string;
+  sub_id_8?: string;
+  sub_id_9?: string;
+  sub_id_10?: string;
 
   // Metrics — may be string | number depending on Keitaro version
   clicks?: number | string;

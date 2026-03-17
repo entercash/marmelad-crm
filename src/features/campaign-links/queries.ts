@@ -166,9 +166,9 @@ type KeitaroStatsKey = string; // "keitaroCampaignId:taboolaExternalId"
 type KeitaroStatsValue = { clicks: number; leads: number; sales: number; revenue: number };
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id.
- * sub_id contains the Taboola campaign external ID passed via tracking link parameters.
- * Returns a map keyed by "keitaroCampaignId:taboolaExternalId" for exact matching.
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
+ * sub_id_1 contains the Taboola campaign ID passed via tracking link parameters.
+ * Returns a map keyed by "keitaroCampaignId:taboolaCampaignId" for exact matching.
  */
 async function getKeitaroStatsForCampaigns(
   keitaroExternalIds: number[],
@@ -187,11 +187,11 @@ async function getKeitaroStatsForCampaigns(
       apiKey: settings.apiKey,
     });
 
-    // Group by campaign_id + sub_id to get exact per-Taboola-campaign stats.
-    // sub_id = Taboola campaign external ID (passed via {campaign_id} macro in tracking URL).
+    // Group by campaign_id + sub_id_1 to get exact per-Taboola-campaign stats.
+    // sub_id_1 = Taboola campaign ID (passed via {campaign_id} macro in tracking URL).
     const report = await client.buildReport({
       range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id"],
+      grouping: ["campaign_id", "sub_id_1"],
       metrics: ["clicks", "conversions", "sales", "revenue"],
       limit: 100_000,
       offset: 0,
@@ -203,14 +203,13 @@ async function getKeitaroStatsForCampaigns(
 
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      const subId = String(row.sub_id ?? "").trim();
+      const subId = String(row.sub_id_1 ?? "").trim();
       if (!campId || !keitaroIdSet.has(campId)) continue;
       if (!subId || !taboolaIdSet.has(subId)) continue;
 
       const key = `${campId}:${subId}`;
       const existing = map.get(key);
       if (existing) {
-        // Accumulate if there are multiple rows (shouldn't happen with this grouping, but safe)
         existing.clicks += Number(row.clicks ?? 0);
         existing.leads += Number(row.conversions ?? 0);
         existing.sales += Number(row.sales ?? 0);

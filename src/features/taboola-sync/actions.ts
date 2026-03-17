@@ -168,8 +168,8 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
       const campaignIdMap = new Map<string, string>();
 
       for (const c of response.results) {
-        // Convert daily_budget to USD
-        const dailyBudgetUsd = toUsd(c.daily_budget, accountCurrency);
+        // Convert daily_cap to USD
+        const dailyBudgetUsd = toUsd(c.daily_cap, accountCurrency);
 
         const data = {
           name: c.name,
@@ -239,7 +239,7 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
         // Filter to known campaigns and upsert
         const processable = statsResponse.results.filter(
-          (row) => campaignIdMap.has(row.campaign_id),
+          (row) => campaignIdMap.has(row.campaign),
         );
         console.log(`[taboola:stats] Processable rows after filter: ${processable.length} / ${statsResponse.results.length}`);
 
@@ -249,10 +249,11 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
           await prisma.$transaction(
             chunk.map((row) => {
-              const campaignId = campaignIdMap.get(row.campaign_id)!;
-              const date = fromApiDate(row.date);
-              // Convert spend to USD
-              const spentUsd = (row.spent ?? 0) * (USD_RATES[row.currency] ?? USD_RATES[accountCurrency] ?? 1);
+              const campaignId = campaignIdMap.get(row.campaign)!;
+              // Taboola date format: "YYYY-MM-DD HH:mm:ss.S" → extract date part
+              const date = fromApiDate(row.date.slice(0, 10));
+              // Convert spend to USD (stats use account currency)
+              const spentUsd = (row.spent ?? 0) * (USD_RATES[accountCurrency] ?? 1);
 
               return prisma.campaignStatsDaily.upsert({
                 where: { campaignId_date: { campaignId, date } },

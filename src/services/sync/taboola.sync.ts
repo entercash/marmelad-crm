@@ -198,7 +198,7 @@ export async function syncTaboolaCampaignStatsDaily(
 
     // Upsert stats — skip rows for campaigns we don't have in DB yet
     const knownRows = response.results.filter((row) =>
-      campaignIdMap.has(row.campaign_id),
+      campaignIdMap.has(row.campaign),
     );
     counter.skipped = response.results.length - knownRows.length;
 

@@ -32,7 +32,7 @@ export interface TaboolaCampaign {
   name: string;
   status: TaboolaCampaignStatus;
   advertiser_id: string;       // platform account ID
-  daily_budget: number | null;
+  daily_cap: number | null;    // daily budget cap (API field name)
   cpc: number | null;          // max cost-per-click bid
   spending_limit: number | null;
   start_date: string | null;   // YYYY-MM-DD
@@ -71,8 +71,8 @@ export interface TaboolaCampaignItemsResponse {
 // Endpoint: /reports/campaign-summary/dimensions/campaign_day_breakdown
 
 export interface TaboolaCampaignStatRow {
-  date: string;          // YYYY-MM-DD
-  campaign_id: string;
+  date: string;          // "YYYY-MM-DD HH:mm:ss.S" (Taboola format)
+  campaign: string;      // campaign ID (API field name, not "campaign_id")
   campaign_name: string;
   spent: number;         // total spend in account currency
   clicks: number;

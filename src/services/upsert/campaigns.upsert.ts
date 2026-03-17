@@ -49,7 +49,7 @@ export async function upsertCampaigns(
         update: {
           name: campaign.name,
           status: mapCampaignStatus(campaign.status),
-          dailyBudget: campaign.daily_budget ?? null,
+          dailyBudget: campaign.daily_cap ?? null,
           cpcBid: campaign.cpc ?? null,
           lastSyncedAt: new Date(),
         },
@@ -59,7 +59,7 @@ export async function upsertCampaigns(
           adAccountId,
           name: campaign.name,
           status: mapCampaignStatus(campaign.status),
-          dailyBudget: campaign.daily_budget ?? null,
+          dailyBudget: campaign.daily_cap ?? null,
           cpcBid: campaign.cpc ?? null,
           lastSyncedAt: new Date(),
         },

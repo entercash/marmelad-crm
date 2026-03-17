@@ -27,7 +27,7 @@ export async function upsertCampaignStats(
   let skipped = 0;
 
   // Filter to rows with known campaigns and chunk for efficiency
-  const processable = rows.filter((row) => campaignIdMap.has(row.campaign_id));
+  const processable = rows.filter((row) => campaignIdMap.has(row.campaign));
   skipped = rows.length - processable.length;
 
   for (let i = 0; i < processable.length; i += CHUNK_SIZE) {
@@ -35,7 +35,7 @@ export async function upsertCampaignStats(
 
     await prisma.$transaction(
       chunk.map((row) => {
-        const campaignId = campaignIdMap.get(row.campaign_id)!;
+        const campaignId = campaignIdMap.get(row.campaign)!;
         const date = fromApiDate(row.date);
 
         return prisma.campaignStatsDaily.upsert({

@@ -21,6 +21,7 @@ import {
   Users,
   Wrench,
   Send,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ const navigation: NavGroup[] = [
   {
     label: "Integrations",
     items: [
+      { label: "Taboola",     href: "/integrations/taboola",     icon: BarChart3 },
       { label: "Taboola CSV", href: "/integrations/taboola-csv", icon: FileUp },
       { label: "Keitaro",     href: "/integrations/keitaro",     icon: Zap },
       { label: "SEO",         href: "/integrations/seo",         icon: Search },

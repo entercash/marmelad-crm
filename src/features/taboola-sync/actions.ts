@@ -237,11 +237,45 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
           console.log(`[taboola:stats] campaignIdMap keys (first 5):`, Array.from(campaignIdMap.keys()).slice(0, 5));
         }
 
-        // Filter to known campaigns and upsert
-        const processable = statsResponse.results.filter(
-          (row) => campaignIdMap.has(row.campaign),
-        );
-        console.log(`[taboola:stats] Processable rows after filter: ${processable.length} / ${statsResponse.results.length}`);
+        // Create campaign records for IDs found in stats but not in /campaigns (deleted campaigns)
+        const unknownCampaignIds = new Set<string>();
+        for (const row of statsResponse.results) {
+          if (!campaignIdMap.has(row.campaign) && !unknownCampaignIds.has(row.campaign)) {
+            unknownCampaignIds.add(row.campaign);
+            // Create campaign from stats data (Taboola deleted it but stats remain)
+            const existing = await prisma.campaign.findUnique({
+              where: {
+                trafficSourceId_externalId: {
+                  trafficSourceId: taboola.id,
+                  externalId: row.campaign,
+                },
+              },
+            });
+            if (existing) {
+              campaignIdMap.set(row.campaign, existing.id);
+            } else {
+              const newCampaign = await prisma.campaign.create({
+                data: {
+                  name: row.campaign_name,
+                  externalId: row.campaign,
+                  trafficSourceId: taboola.id,
+                  adAccountId: adAccount.id,
+                  status: "STOPPED",
+                  currency: "USD",
+                  lastSyncedAt: new Date(),
+                },
+              });
+              campaignIdMap.set(row.campaign, newCampaign.id);
+              created++;
+            }
+          }
+        }
+        if (unknownCampaignIds.size > 0) {
+          console.log(`[taboola:stats] Created ${unknownCampaignIds.size} campaigns from stats (deleted in Taboola)`);
+        }
+
+        const processable = statsResponse.results;
+        console.log(`[taboola:stats] Processable rows: ${processable.length}`);
 
         const CHUNK_SIZE = 100;
         for (let i = 0; i < processable.length; i += CHUNK_SIZE) {

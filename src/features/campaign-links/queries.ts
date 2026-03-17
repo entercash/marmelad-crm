@@ -162,21 +162,24 @@ async function getTaboolaStatsByCampaign(
 }
 
 /** Fetch Keitaro stats from Reports API for mapped campaigns. Returns null on error. */
-type KeitaroStatsKey = string; // "keitaroCampaignId:taboolaExternalId"
+type KeitaroStatsKey = string; // "keitaroCampaignId:taboolaExternalId" or "keitaroCampaignId"
 type KeitaroStatsValue = { clicks: number; leads: number; sales: number; revenue: number };
 
 /**
  * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
  * sub_id_1 contains the Taboola campaign ID passed via tracking link parameters.
- * Returns a map keyed by "keitaroCampaignId:taboolaCampaignId" for exact matching.
+ *
+ * Returns two maps:
+ * - exact: keyed by "keitaroCampaignId:taboolaCampaignId" (when sub_id_1 matches)
+ * - byCampaign: keyed by "keitaroCampaignId" (aggregated fallback for old traffic)
  */
 async function getKeitaroStatsForCampaigns(
   keitaroExternalIds: number[],
   taboolaExternalIds: string[],
   dateFrom: string,
   dateTo: string,
-): Promise<Map<KeitaroStatsKey, KeitaroStatsValue> | null> {
-  if (keitaroExternalIds.length === 0) return new Map();
+): Promise<{ exact: Map<KeitaroStatsKey, KeitaroStatsValue>; byCampaign: Map<string, KeitaroStatsValue> } | null> {
+  if (keitaroExternalIds.length === 0) return { exact: new Map(), byCampaign: new Map() };
 
   try {
     const settings = await getKeitaroSettings();
@@ -199,31 +202,46 @@ async function getKeitaroStatsForCampaigns(
 
     const keitaroIdSet = new Set(keitaroExternalIds);
     const taboolaIdSet = new Set(taboolaExternalIds);
-    const map = new Map<KeitaroStatsKey, KeitaroStatsValue>();
+    const exact = new Map<KeitaroStatsKey, KeitaroStatsValue>();
+    const byCampaign = new Map<string, KeitaroStatsValue>();
 
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      const subId = String(row.sub_id_1 ?? "").trim();
       if (!campId || !keitaroIdSet.has(campId)) continue;
-      if (!subId || !taboolaIdSet.has(subId)) continue;
 
-      const key = `${campId}:${subId}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.clicks += Number(row.clicks ?? 0);
-        existing.leads += Number(row.conversions ?? 0);
-        existing.sales += Number(row.sales ?? 0);
-        existing.revenue += Number(row.revenue ?? 0);
+      const clicks = Number(row.clicks ?? 0);
+      const leads = Number(row.conversions ?? 0);
+      const sales = Number(row.sales ?? 0);
+      const revenue = Number(row.revenue ?? 0);
+
+      // Always aggregate by campaign (fallback)
+      const campKey = String(campId);
+      const campExisting = byCampaign.get(campKey);
+      if (campExisting) {
+        campExisting.clicks += clicks;
+        campExisting.leads += leads;
+        campExisting.sales += sales;
+        campExisting.revenue += revenue;
       } else {
-        map.set(key, {
-          clicks: Number(row.clicks ?? 0),
-          leads: Number(row.conversions ?? 0),
-          sales: Number(row.sales ?? 0),
-          revenue: Number(row.revenue ?? 0),
-        });
+        byCampaign.set(campKey, { clicks, leads, sales, revenue });
+      }
+
+      // Exact match via sub_id_1
+      const subId = String(row.sub_id_1 ?? "").trim();
+      if (subId && taboolaIdSet.has(subId)) {
+        const exactKey = `${campId}:${subId}`;
+        const exactExisting = exact.get(exactKey);
+        if (exactExisting) {
+          exactExisting.clicks += clicks;
+          exactExisting.leads += leads;
+          exactExisting.sales += sales;
+          exactExisting.revenue += revenue;
+        } else {
+          exact.set(exactKey, { clicks, leads, sales, revenue });
+        }
       }
     }
-    return map;
+    return { exact, byCampaign };
   } catch (err) {
     console.error("[getKeitaroStatsForCampaigns] Keitaro API error:", err);
     return null;
@@ -371,17 +389,28 @@ export async function getCampaignLinkStats(
   const keitaroIds = Array.from(keitaroIdSet);
   const from = dateFrom ?? "2024-01-01";
   const to = dateTo ?? todayCrm();
-  let keitaroStats: Map<string, KeitaroStatsValue> | null = null;
+  let keitaroResult: { exact: Map<string, KeitaroStatsValue>; byCampaign: Map<string, KeitaroStatsValue> } | null = null;
   if (keitaroIds.length > 0) {
-    keitaroStats = await getKeitaroStatsForCampaigns(keitaroIds, taboolaIds, from, to);
+    keitaroResult = await getKeitaroStatsForCampaigns(keitaroIds, taboolaIds, from, to);
   }
 
-  // Merge — exact matching via keitaroCampaignExternalId + taboolaCampaignExternalId
+  // Count how many links share the same Keitaro campaign (for fallback distribution)
+  const linksPerKeitaro = new Map<number, number>();
+  for (const l of links) {
+    linksPerKeitaro.set(l.keitaroCampaignExternalId, (linksPerKeitaro.get(l.keitaroCampaignExternalId) ?? 0) + 1);
+  }
+
+  // Merge — prefer exact sub_id match, fall back to campaign-level
   return links.map((link) => {
     const ts = taboolaStats.get(link.taboolaCampaignExternalId);
-    // Exact match: Keitaro stats for this specific Taboola campaign via sub_id
+
+    // Try exact match first (sub_id_1 = Taboola campaign ID)
     const ksKey = `${link.keitaroCampaignExternalId}:${link.taboolaCampaignExternalId}`;
-    const ks = keitaroStats?.get(ksKey) ?? null;
+    const exactKs = keitaroResult?.exact.get(ksKey) ?? null;
+    // Fallback: campaign-level stats (only if this is the sole link for this Keitaro campaign)
+    const campaignKs = keitaroResult?.byCampaign.get(String(link.keitaroCampaignExternalId)) ?? null;
+    const linkCount = linksPerKeitaro.get(link.keitaroCampaignExternalId) ?? 1;
+    const ks = exactKs ?? (linkCount === 1 ? campaignKs : null);
 
     const rawSpend = ts?.spend ?? 0;
     const multiplier = commMultipliers.get(link.taboolaCampaignExternalId) ?? 1;

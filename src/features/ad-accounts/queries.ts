@@ -126,14 +126,26 @@ export async function getAccounts(): Promise<AccountRow[]> {
       // table may not exist yet if migration hasn't been applied
     }
 
-    // Collect all externalIds to batch-fetch spend totals
-    const externalIds = rows
-      .map((r) => r.externalId)
-      .filter((id): id is string => id !== null && id !== "");
+    // Build Account.id → Taboola AdAccount.externalId mapping via integration settings.
+    // Settings store `taboola.<accountId>.taboolaAccountId` which is what AdAccount.externalId uses.
+    const accountIds = rows.map((r) => r.id);
+    const settingRows = await prisma.integrationSetting.findMany({
+      where: {
+        key: { in: accountIds.map((id) => `taboola.${id}.taboolaAccountId`) },
+      },
+      select: { key: true, value: true },
+    });
+    // Map: taboolaAccountId (AdAccount.externalId) → Account.id
+    const taboolaToAccountId = new Map<string, string>();
+    for (const s of settingRows) {
+      const match = s.key.match(/^taboola\.(.+)\.taboolaAccountId$/);
+      if (match && s.value) taboolaToAccountId.set(s.value, match[1]);
+    }
+    const adAccountExternalIds = Array.from(taboolaToAccountId.keys());
 
     // Sum spend from campaign_stats_daily via AdAccount bridge (already in USD)
     let spendMap: Record<string, { native: number; usd: number }> = {};
-    if (externalIds.length > 0) {
+    if (adAccountExternalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
         { externalId: string; totalUsd: Prisma.Decimal }[]
       >`
@@ -142,19 +154,22 @@ export async function getAccounts(): Promise<AccountRow[]> {
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        WHERE aa."externalId" IN (${Prisma.join(externalIds)})
+        WHERE aa."externalId" IN (${Prisma.join(adAccountExternalIds)})
         GROUP BY aa."externalId"
       `;
       for (const sr of spendRows) {
-        spendMap[sr.externalId] = {
-          native: Number(sr.totalUsd), // Already converted to USD during sync
-          usd:    Number(sr.totalUsd),
-        };
+        const accountId = taboolaToAccountId.get(sr.externalId);
+        if (accountId) {
+          spendMap[accountId] = {
+            native: Number(sr.totalUsd),
+            usd:    Number(sr.totalUsd),
+          };
+        }
       }
     }
 
     return rows.map((r) => {
-      const spend = r.externalId ? spendMap[r.externalId] : undefined;
+      const spend = spendMap[r.id];
       const rawSpentNative = spend?.native ?? 0;
       const rawSpentUsd    = spend?.usd ?? 0;
 

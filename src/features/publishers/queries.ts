@@ -109,6 +109,25 @@ export async function getDistinctCountries(): Promise<CountryOption[]> {
   }));
 }
 
+export type MappedCampaignOption = {
+  externalId: string;
+  name: string;
+};
+
+/** Get mapped campaigns (with CampaignLink) for the filter dropdown. */
+export async function getMappedCampaigns(): Promise<MappedCampaignOption[]> {
+  const links = await prisma.campaignLink.findMany({
+    select: { taboolaCampaignExternalId: true, taboolaCampaignName: true },
+    distinct: ["taboolaCampaignExternalId"],
+  });
+  return links
+    .map((l) => ({
+      externalId: l.taboolaCampaignExternalId,
+      name: l.taboolaCampaignName || l.taboolaCampaignExternalId,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ─── Campaign links for publisher matching ──────────────────────────────────
 
 async function getCampaignLinksForPublishers(
@@ -426,8 +445,10 @@ export async function getPublisherStats(params: {
   dateFrom?: string;
   dateTo?: string;
   linkedOnly?: boolean;
+  siteSearch?: string;
+  campaignId?: string;
 }): Promise<PublisherStatsResult> {
-  const { country, page = 1, perPage = 50, dateFrom, dateTo, linkedOnly } = params;
+  const { country, page = 1, perPage = 50, dateFrom, dateTo, linkedOnly, siteSearch, campaignId } = params;
   const offset = (page - 1) * perPage;
 
   // If linkedOnly, restrict to campaigns in CampaignLink
@@ -447,6 +468,20 @@ export async function getPublisherStats(params: {
   if (dateFrom && dateTo) conditions.push(Prisma.sql`psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`);
   if (linkedCampaignIds) {
     conditions.push(Prisma.sql`c."externalId" IN (${Prisma.join(linkedCampaignIds)})`);
+  }
+  // Site search: match by externalId, numericId, or name (case-insensitive)
+  if (siteSearch) {
+    const like = `%${siteSearch}%`;
+    const numericId = /^\d+$/.test(siteSearch) ? parseInt(siteSearch, 10) : null;
+    if (numericId !== null) {
+      conditions.push(Prisma.sql`(p."externalId" ILIKE ${like} OR p."name" ILIKE ${like} OR p."numericId" = ${numericId})`);
+    } else {
+      conditions.push(Prisma.sql`(p."externalId" ILIKE ${like} OR p."name" ILIKE ${like})`);
+    }
+  }
+  // Campaign filter: restrict to a specific mapped campaign
+  if (campaignId) {
+    conditions.push(Prisma.sql`c."externalId" = ${campaignId}`);
   }
 
   const whereClause = conditions.length > 0

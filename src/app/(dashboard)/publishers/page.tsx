@@ -13,6 +13,7 @@ import {
   getPublisherStats,
   getPublisherDailyTrends,
   getDistinctCountries,
+  getMappedCampaigns,
   type PublisherStatsRow,
   type SiteTrends,
 } from "@/features/publishers/queries";
@@ -40,7 +41,7 @@ function fmtPct(val: number | null): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-type SearchParams = { country?: string; page?: string; period?: string; from?: string; to?: string; linked?: string };
+type SearchParams = { country?: string; page?: string; period?: string; from?: string; to?: string; linked?: string; site?: string; campaign?: string };
 
 export default async function PublishersPage({
   searchParams,
@@ -50,6 +51,8 @@ export default async function PublishersPage({
   const dateRange = parseDateFilter(searchParams);
   const country = searchParams.country;
   const linkedOnly = searchParams.linked === "1";
+  const siteSearch = searchParams.site || undefined;
+  const campaignId = searchParams.campaign || undefined;
   const page = Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1);
   const perPage = 50;
 
@@ -58,12 +61,14 @@ export default async function PublishersPage({
     total: 0,
   };
   let countries: { code: string; name: string }[] = [];
+  let campaigns: { externalId: string; name: string }[] = [];
   let trends = new Map<string, SiteTrends>();
 
   try {
-    [stats, countries] = await Promise.all([
-      getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to, linkedOnly }),
+    [stats, countries, campaigns] = await Promise.all([
+      getPublisherStats({ country, page, perPage, dateFrom: dateRange?.from, dateTo: dateRange?.to, linkedOnly, siteSearch, campaignId }),
       getDistinctCountries(),
+      getMappedCampaigns(),
     ]);
 
     // Fetch sparkline trends for sites on this page (7-day window, independent of date filter)
@@ -86,6 +91,8 @@ export default async function PublishersPage({
     if (searchParams.from) params.set("from", searchParams.from);
     if (searchParams.to) params.set("to", searchParams.to);
     if (linkedOnly) params.set("linked", "1");
+    if (siteSearch) params.set("site", siteSearch);
+    if (campaignId) params.set("campaign", campaignId);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
     return `/publishers${qs ? `?${qs}` : ""}`;
@@ -100,7 +107,7 @@ export default async function PublishersPage({
 
       <div className="flex flex-wrap items-center gap-4">
         <DateRangeFilter basePath="/publishers" preserveParams={["country"]} />
-        <PublisherFilters countries={countries} />
+        <PublisherFilters countries={countries} campaigns={campaigns} />
       </div>
 
       {!hasData ? (

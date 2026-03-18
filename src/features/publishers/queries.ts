@@ -21,6 +21,7 @@ import { CRM_TIMEZONE, todayCrm, toApiDate } from "@/lib/date";
 
 export type PublisherStatsRow = {
   siteExternalId: string;
+  siteNumericId: number | null;
   siteName: string;
   siteUrl: string | null;
   clicks: number;
@@ -52,6 +53,7 @@ type RawCountRow = { total: bigint };
 
 type RawStatsRow = {
   siteExternalId: string;
+  siteNumericId: number | null;
   siteName: string;
   siteUrl: string | null;
   clicks: bigint;
@@ -83,6 +85,13 @@ const COUNTRY_NAMES: Record<string, string> = {
   CL: "Chile", CO: "Colombia", PE: "Peru", MY: "Malaysia", SG: "Singapore",
   AE: "UAE", SA: "Saudi Arabia", EG: "Egypt", NG: "Nigeria", KE: "Kenya",
 };
+
+/** Get all available countries for form dropdowns (static list). */
+export function getAllCountries(): CountryOption[] {
+  return Object.entries(COUNTRY_NAMES)
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 // ─── Dropdown queries ───────────────────────────────────────────────────────
 
@@ -442,6 +451,7 @@ export async function getPublisherStats(params: {
       ${ACCT_MULT_CTE}
       SELECT
         p."externalId" as "siteExternalId",
+        p."numericId" as "siteNumericId",
         p."name" as "siteName",
         p."domain" as "siteUrl",
         COALESCE(SUM(psd."clicks"), 0) as "clicks",
@@ -453,7 +463,7 @@ export async function getPublisherStats(params: {
       JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
       LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
       ${whereClause}
-      GROUP BY p."externalId", p."name", p."domain"
+      GROUP BY p."externalId", p."numericId", p."name", p."domain"
       ORDER BY SUM(psd."spend" * COALESCE(am.multiplier, 1)) DESC
       LIMIT ${perPage} OFFSET ${offset}
     `,
@@ -521,6 +531,7 @@ export async function getPublisherStats(params: {
 
     return {
       siteExternalId: r.siteExternalId,
+      siteNumericId: r.siteNumericId,
       siteName: r.siteName,
       siteUrl: r.siteUrl,
       clicks, impressions, spend, cpc, ctr,

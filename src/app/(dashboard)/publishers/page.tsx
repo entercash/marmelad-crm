@@ -95,7 +95,7 @@ export default async function PublishersPage({
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         title="Publishers"
-        description="Analyze site performance from Taboola CSV imports"
+        description="Analyze site performance from Taboola API"
       />
 
       <div className="flex flex-wrap items-center gap-4">
@@ -162,7 +162,7 @@ export default async function PublishersPage({
                         {row.siteName}
                       </div>
                       <div className="truncate text-[11px] tabular-nums text-slate-500">
-                        ID: {row.siteExternalId}
+                        {row.siteNumericId ? `#${row.siteNumericId}` : row.siteExternalId}
                       </div>
                       {row.siteUrl && (
                         <div className="truncate text-[11px] text-slate-500">

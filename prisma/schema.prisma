@@ -313,7 +313,8 @@ model CampaignItem {
 /// for cross-source deduplication and display.
 model Publisher {
   id              String        @id @default(cuid())
-  externalId      String        // platform publisher/site ID
+  externalId      String        // platform publisher/site slug (e.g. "reach-express")
+  numericId       Int?          // platform numeric site ID (e.g. 1374768)
   trafficSourceId String
   name            String        // as returned by the platform
   domain          String?       // normalized root domain (e.g. "example.com")

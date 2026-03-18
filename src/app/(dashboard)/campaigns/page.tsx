@@ -19,7 +19,7 @@ import {
   type CampaignStatsRow,
   type AdspectStreamOption,
 } from "@/features/campaign-links/queries";
-import { getDistinctCountries } from "@/features/publishers/queries";
+import { getAllCountries } from "@/features/publishers/queries";
 import { parseDateFilter }     from "@/lib/date";
 
 export const metadata = { title: "Campaigns" };
@@ -54,15 +54,14 @@ export default async function CampaignsPage({
   let stats: CampaignStatsRow[] = [];
   let taboolaCampaigns: Awaited<ReturnType<typeof getDistinctTaboolaCampaigns>> = [];
   let keitaroCampaigns: Awaited<ReturnType<typeof getKeitaroCampaignOptions>> = [];
-  let countries: Awaited<ReturnType<typeof getDistinctCountries>> = [];
+  const countries = getAllCountries();
   let adspectStreams: AdspectStreamOption[] = [];
 
   try {
-    [stats, taboolaCampaigns, keitaroCampaigns, countries, adspectStreams] = await Promise.all([
+    [stats, taboolaCampaigns, keitaroCampaigns, adspectStreams] = await Promise.all([
       getCampaignLinkStats(dateRange?.from, dateRange?.to),
       getDistinctTaboolaCampaigns(),
       getKeitaroCampaignOptions(),
-      getDistinctCountries(),
       getAdspectStreams(),
     ]);
   } catch (err) {

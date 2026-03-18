@@ -396,14 +396,20 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
           const siteName = dyn(row, "site_name", "publisher_name") || siteKey;
           const domain = extractDomain(siteName) ?? extractDomain(siteKey);
+          const numericId = (row as any).site_id
+            ? Number((row as any).site_id)
+            : null;
 
           if (existing) {
             publisherIdMap.set(siteKey, existing.id);
-            // Update name/domain if previously empty
-            if (!existing.domain && domain) {
+            // Update name/domain/numericId if previously empty
+            const updates: Record<string, unknown> = {};
+            if (!existing.domain && domain) updates.domain = domain;
+            if (!existing.numericId && numericId) updates.numericId = numericId;
+            if (Object.keys(updates).length > 0) {
               await prisma.publisher.update({
                 where: { id: existing.id },
-                data: { domain },
+                data: updates,
               });
             }
           } else {
@@ -413,11 +419,25 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                 trafficSourceId: taboola.id,
                 name: siteName,
                 domain,
+                numericId,
               },
             });
             publisherIdMap.set(siteKey, newPub.id);
           }
         }
+
+        // Build campaign → country map from CampaignLink for GEO enrichment
+        const campaignGeoMap = new Map<string, string>();
+        const campaignLinks = await prisma.campaignLink.findMany({
+          where: { taboolaCampaignExternalId: { in: Array.from(campaignIdMap.keys()) } },
+          select: { taboolaCampaignExternalId: true, country: true },
+        });
+        for (const cl of campaignLinks) {
+          if (cl.country && /^[A-Z]{2}$/.test(cl.country)) {
+            campaignGeoMap.set(cl.taboolaCampaignExternalId, cl.country);
+          }
+        }
+        console.log(`[taboola:publishers] Campaign GEO map: ${campaignGeoMap.size} campaigns with country`);
 
         // Upsert publisher stats (filter to rows where campaign is known)
         const pubProcessable = pubResponse.results.filter(
@@ -445,8 +465,10 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
               const publisherId = publisherIdMap.get(dyn(row, "site", "site_id", "publisher")!)!;
               const campaignId = campaignIdMap.get(dyn(row, "campaign_id", "campaign")!)!;
               const date = fromApiDate(extractDate(row.date));
-              const rawGeo = dyn(row, "country", "country_code", "geo") ?? "";
-              const geo = /^[A-Z]{2}$/.test(rawGeo) ? rawGeo : "XX";
+              // GEO: Taboola API doesn't include country in campaign_site_day_breakdown.
+              // Derive from CampaignLink.country (campaign target GEO).
+              const campaignExternalId = dyn(row, "campaign_id", "campaign")!;
+              const geo = campaignGeoMap.get(campaignExternalId) ?? "XX";
               const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 
               return prisma.publisherStatsDaily.upsert({

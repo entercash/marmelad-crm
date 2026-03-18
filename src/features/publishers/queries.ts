@@ -172,13 +172,14 @@ async function getSiteCampaignAssociations(
   return map;
 }
 
-// ─── Keitaro stats by site (exact matching via sub_id_4 = site_id) ──────────
+// ─── Keitaro stats by site (exact matching via sub_id_3 = site slug) ─────────
 
 type KeitaroSiteStats = { leads: number; revenue: number };
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id_4.
- * sub_id_4 contains the Taboola site_id (passed via src_id={site_id} in tracking URL).
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_3.
+ * sub_id_3 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
+ * Note: sub_id_4 = {site_id} is empty — Taboola doesn't populate numeric site_id.
  *
  * Keitaro sub_id mapping (positional, matches UTM builder):
  *   sub_id_1 = camp      = {campaign_id}
@@ -215,11 +216,12 @@ async function getKeitaroStatsBySite(
     const from = dateFrom ?? "2024-01-01";
     const to = dateTo ?? todayCrm();
 
-    // Group by campaign_id + sub_id_4 to get exact per-site stats.
-    // sub_id_4 = Taboola site_id (passed via src_id={site_id} in tracking URL).
+    // Group by campaign_id + sub_id_3 to get exact per-site stats.
+    // sub_id_3 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
+    // Note: sub_id_4 = src_id = {site_id} is empty (Taboola doesn't populate it).
     const report = await client.buildReport({
       range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id_4"],
+      grouping: ["campaign_id", "sub_id_3"],
       metrics: ["conversions", "revenue"],
       limit: 100_000,
       offset: 0,
@@ -244,7 +246,7 @@ async function getKeitaroStatsBySite(
         continue;
       }
 
-      const siteId = String(row.sub_id_4 ?? "").trim();
+      const siteId = String(row.sub_id_3 ?? "").trim();
       if (!siteId) continue;
 
       const leads = Number(row.conversions ?? 0);
@@ -666,7 +668,7 @@ export async function getPublisherDailyTrends(
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
-          const siteId = String(row.sub_id_4 ?? "").trim();
+          const siteId = String(row.sub_id_3 ?? "").trim();
           if (!campId || !day || !siteId || !idSet.has(campId)) continue;
 
           const leads = Number(row.conversions ?? 0);

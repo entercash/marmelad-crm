@@ -35,11 +35,17 @@ export type TaboolaPublisherStatsDailyPayload = {
   endDate: string;
 };
 
+export type TaboolaFullSyncPayload = {
+  type: "taboola:full-sync";
+  mode: "intraday" | "full"; // intraday = today+yesterday, full = 30 days
+};
+
 export type TaboolaJobPayload =
   | TaboolaCampaignsPayload
   | TaboolaCampaignStatsDailyPayload
   | TaboolaItemStatsDailyPayload
-  | TaboolaPublisherStatsDailyPayload;
+  | TaboolaPublisherStatsDailyPayload
+  | TaboolaFullSyncPayload;
 
 // ─── Keitaro job payloads ─────────────────────────────────────────────────────
 

@@ -7,9 +7,18 @@
 
 import type { Job } from "bullmq";
 import { ValidationError } from "../../lib/errors";
-import { isValidDateStr } from "../../lib/date";
+import { isValidDateStr, todayCrm, daysAgoCrm } from "../../lib/date";
 import type { KeitaroJobPayload } from "../types";
 import { syncKeitaroConversionStatsDaily } from "../../services/sync/keitaro.sync";
+
+// ─── Date sentinel resolution ────────────────────────────────────────────────
+
+/** Resolve AUTO_INTRADAY / AUTO_FULL sentinels to real dates. */
+function resolveDates(startDate: string, endDate: string): { startDate: string; endDate: string } {
+  if (startDate === "AUTO_INTRADAY") return { startDate: daysAgoCrm(1), endDate: todayCrm() };
+  if (startDate === "AUTO_FULL") return { startDate: daysAgoCrm(30), endDate: todayCrm() };
+  return { startDate, endDate };
+}
 
 // ─── Main router ──────────────────────────────────────────────────────────────
 
@@ -44,7 +53,8 @@ async function handleConversionStats(
     endDate: string;
   }>,
 ): Promise<void> {
-  const { startDate, endDate } = job.data;
+  const resolved = resolveDates(job.data.startDate, job.data.endDate);
+  const { startDate, endDate } = resolved;
 
   if (!isValidDateStr(startDate)) throw new ValidationError(`Invalid startDate: ${startDate}`);
   if (!isValidDateStr(endDate)) throw new ValidationError(`Invalid endDate: ${endDate}`);

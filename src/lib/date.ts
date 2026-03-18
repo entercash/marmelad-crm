@@ -65,6 +65,14 @@ export function todayCrm(): string {
   return shifted.toISOString().slice(0, 10);
 }
 
+/** Return YYYY-MM-DD for N days ago in CRM timezone (Europe/Moscow). */
+export function daysAgoCrm(n: number): string {
+  const today = todayCrm();
+  const d = new Date(`${today}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Generate an array of YYYY-MM-DD strings for a date range (both ends inclusive).
  * Useful for iterating over multi-day ranges in small API windows.

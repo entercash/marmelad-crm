@@ -12,7 +12,7 @@
 
 import type { Job } from "bullmq";
 import { ValidationError } from "../../lib/errors";
-import { isValidDateStr } from "../../lib/date";
+import { isValidDateStr, todayCrm, daysAgoCrm } from "../../lib/date";
 import type { TaboolaJobPayload } from "../types";
 import {
   syncTaboolaCampaigns,
@@ -20,6 +20,7 @@ import {
   syncTaboolaItemStatsDaily,
   syncTaboolaPublisherStatsDaily,
 } from "../../services/sync/taboola.sync";
+import { getTaboolaConnectedAccountIds } from "../../features/integration-settings/queries";
 
 // ─── Main router ──────────────────────────────────────────────────────────────
 
@@ -40,6 +41,9 @@ export async function handleTaboolaJob(
 
     case "taboola:publisher-stats-daily":
       return handlePublisherStats(job as Job<typeof data>);
+
+    case "taboola:full-sync":
+      return handleFullSync(job as Job<typeof data>);
 
     default: {
       // TypeScript exhaustiveness check
@@ -151,5 +155,64 @@ async function handlePublisherStats(
 
   console.log(
     `[taboola:publisher-stats-daily] Done | fetched=${result.recordsFetched} updated=${result.recordsUpdated} skipped=${result.recordsSkipped} failed=${result.recordsFailed} | syncLogId=${result.syncLogId}`,
+  );
+}
+
+// ─── Full sync (orchestrates all steps for all accounts) ─────────────────────
+
+async function handleFullSync(
+  job: Job<{ type: "taboola:full-sync"; mode: "intraday" | "full" }>,
+): Promise<void> {
+  const { mode } = job.data;
+
+  // Resolve date range based on mode
+  const endDate = todayCrm();
+  const startDate = mode === "intraday" ? daysAgoCrm(1) : daysAgoCrm(30);
+
+  console.log(
+    `[taboola:full-sync] Starting | mode=${mode} | ${startDate}→${endDate} | jobId=${job.id}`,
+  );
+
+  // Get all connected Taboola accounts
+  const accountIds = await getTaboolaConnectedAccountIds();
+  if (accountIds.size === 0) {
+    console.log("[taboola:full-sync] No connected Taboola accounts — skipping");
+    return;
+  }
+
+  const dateRange = { startDate, endDate };
+  let totalStats = { campaigns: 0, campaignStats: 0, publisherStats: 0, itemStats: 0 };
+
+  for (const accountId of Array.from(accountIds)) {
+    try {
+      console.log(`[taboola:full-sync] Syncing account ${accountId}...`);
+
+      // 1. Campaigns
+      const campResult = await syncTaboolaCampaigns({ accountId });
+      totalStats.campaigns += campResult.recordsFetched;
+
+      // 2. Campaign stats
+      const statsResult = await syncTaboolaCampaignStatsDaily({ accountId, dateRange });
+      totalStats.campaignStats += statsResult.recordsFetched;
+
+      // 3. Publisher stats
+      const pubResult = await syncTaboolaPublisherStatsDaily({ accountId, dateRange });
+      totalStats.publisherStats += pubResult.recordsFetched;
+
+      // 4. Item stats
+      const itemResult = await syncTaboolaItemStatsDaily({ accountId, dateRange });
+      totalStats.itemStats += itemResult.recordsFetched;
+
+      console.log(
+        `[taboola:full-sync] Account ${accountId} done | campaigns=${campResult.recordsFetched} stats=${statsResult.recordsFetched} publishers=${pubResult.recordsFetched} items=${itemResult.recordsFetched}`,
+      );
+    } catch (err) {
+      console.error(`[taboola:full-sync] Account ${accountId} failed:`, err);
+      // Continue with other accounts — don't let one failure stop everything
+    }
+  }
+
+  console.log(
+    `[taboola:full-sync] Complete | mode=${mode} | accounts=${accountIds.size} | campaigns=${totalStats.campaigns} stats=${totalStats.campaignStats} publishers=${totalStats.publisherStats} items=${totalStats.itemStats}`,
   );
 }

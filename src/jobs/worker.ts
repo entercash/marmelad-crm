@@ -9,6 +9,7 @@
  *  - Creates a BullMQ Worker for the "data-sync" queue using its own Redis
  *    connection (via getBullMQConnection — NOT the shared ioredis singleton)
  *  - Routes jobs by type prefix to the correct handler
+ *  - Registers repeatable job schedulers (intraday + nightly sync)
  *  - Handles graceful shutdown on SIGTERM / SIGINT
  *
  * ⚠️  DO NOT import this file from Next.js.
@@ -19,12 +20,52 @@ import { getBullMQConnection } from "../lib/bullmq-connection";
 import { toErrorMessage } from "../lib/errors";
 import { handleTaboolaJob } from "./handlers/taboola.handlers";
 import { handleKeitaroJob } from "./handlers/keitaro.handlers";
+import { syncQueue } from "./queues";
 import type { SyncJobPayload } from "./types";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const QUEUE_NAME = "data-sync";
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? "2", 10);
+
+// ─── Scheduler registration ──────────────────────────────────────────────────
+
+/**
+ * Register repeatable job schedulers (idempotent — safe on restart).
+ * Uses BullMQ upsertJobScheduler API: if a scheduler with the same name
+ * already exists, it updates the schedule; otherwise creates a new one.
+ */
+async function registerSchedulers(): Promise<void> {
+  // ── Taboola intraday: every 10 min, today + yesterday ──
+  await syncQueue.upsertJobScheduler(
+    "taboola-intraday",
+    { every: 10 * 60 * 1000 },
+    { name: "taboola:full-sync", data: { type: "taboola:full-sync" as const, mode: "intraday" as const } },
+  );
+
+  // ── Taboola nightly: once at 04:00 MSK, last 30 days ──
+  await syncQueue.upsertJobScheduler(
+    "taboola-nightly",
+    { pattern: "0 4 * * *", tz: "Europe/Moscow" },
+    { name: "taboola:full-sync", data: { type: "taboola:full-sync" as const, mode: "full" as const } },
+  );
+
+  // ── Keitaro intraday: every 10 min, today + yesterday ──
+  await syncQueue.upsertJobScheduler(
+    "keitaro-intraday",
+    { every: 10 * 60 * 1000 },
+    { name: "keitaro:conversion-stats-daily", data: { type: "keitaro:conversion-stats-daily" as const, startDate: "AUTO_INTRADAY", endDate: "AUTO_INTRADAY" } },
+  );
+
+  // ── Keitaro nightly: once at 04:10 MSK, last 30 days ──
+  await syncQueue.upsertJobScheduler(
+    "keitaro-nightly",
+    { pattern: "10 4 * * *", tz: "Europe/Moscow" },
+    { name: "keitaro:conversion-stats-daily", data: { type: "keitaro:conversion-stats-daily" as const, startDate: "AUTO_FULL", endDate: "AUTO_FULL" } },
+  );
+
+  console.log("[Worker] Registered 4 job schedulers (taboola-intraday, taboola-nightly, keitaro-intraday, keitaro-nightly)");
+}
 
 // ─── Worker ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +121,10 @@ async function main(): Promise<void> {
   worker.on("error", (err) => {
     console.error("[Worker] Worker error:", toErrorMessage(err));
   });
+
+  // ─── Register repeatable schedulers ─────────────────────────────────────────
+
+  await registerSchedulers();
 
   // ─── Graceful shutdown ─────────────────────────────────────────────────────
 

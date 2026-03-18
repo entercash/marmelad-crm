@@ -62,8 +62,9 @@ const navigation: NavGroup[] = [
   {
     label: "Tools",
     items: [
-      { label: "UTM Builder", href: "/tools/utm-builder", icon: Wrench },
-      { label: "S2S Postback", href: "/tools/s2s-postback", icon: Send },
+      { label: "UTM Builder",     href: "/tools/utm-builder",  icon: Wrench },
+      { label: "S2S Postback",    href: "/tools/s2s-postback", icon: Send },
+      { label: "Domain Monitor",  href: "/domains",            icon: Globe },
     ],
   },
   {
@@ -74,7 +75,6 @@ const navigation: NavGroup[] = [
       { label: "White Pages", href: "/white-pages", icon: FileCheck2 },
       { label: "Ad Accounts", href: "/ad-accounts", icon: CreditCard },
       { label: "Balances",    href: "/balances",    icon: Wallet },
-      { label: "Domains",     href: "/domains",     icon: Globe },
     ],
   },
   {

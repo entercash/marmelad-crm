@@ -44,4 +44,4 @@ RUN npx prisma generate
 # Run the TypeScript worker directly via tsx (no separate compile step).
 # tsx resolves tsconfig paths (@/*) natively; path aliases in src/jobs/* have
 # been replaced with relative imports to avoid any Node ESM resolution edge-cases.
-CMD ["node", "--import", "tsx/esm", "src/jobs/worker.ts"]
+CMD ["npx", "tsx", "src/jobs/worker.ts"]

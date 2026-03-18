@@ -10,6 +10,7 @@ import {
   getKeitaroInstances,
   getAdspectSettings,
   getTelegramSettings,
+  getGoogleSettings,
 } from "@/features/integration-settings/queries";
 import { prisma } from "@/lib/prisma";
 
@@ -18,7 +19,7 @@ export const metadata = { title: "Settings" };
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default async function SettingsPage() {
-  const [taboolaAccounts, connectedIds, keitaroInstances, adspectSettings, telegramSettings] = await Promise.all([
+  const [taboolaAccounts, connectedIds, keitaroInstances, adspectSettings, telegramSettings, googleSettings] = await Promise.all([
     prisma.account.findMany({
       where: { platform: "TABOOLA" },
       orderBy: { name: "asc" },
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
     getKeitaroInstances(),
     getAdspectSettings(),
     getTelegramSettings(),
+    getGoogleSettings(),
   ]);
 
   // Pre-fetch Taboola settings for connected accounts
@@ -77,6 +79,10 @@ export default async function SettingsPage() {
           leadsTopicId: telegramSettings.leadsTopicId ?? "",
           alertsTopicId: telegramSettings.alertsTopicId ?? "",
           configured: !!(telegramSettings.botToken && telegramSettings.chatId),
+        }}
+        google={{
+          safeBrowsingApiKey: googleSettings.safeBrowsingApiKey ?? "",
+          configured: !!googleSettings.safeBrowsingApiKey,
         }}
       />
     </div>

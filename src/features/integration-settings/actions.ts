@@ -11,7 +11,7 @@ import type { TaboolaConfig } from "@/integrations/taboola/client";
 import { AdspectClient }   from "@/integrations/adspect/client";
 import { prisma }          from "@/lib/prisma";
 import crypto from "crypto";
-import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings, getTelegramSettings } from "./queries";
+import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings, getTelegramSettings, getGoogleSettings } from "./queries";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 // ─── Save Keitaro Settings ──────────────────────────────────────────────────
@@ -388,6 +388,40 @@ export async function testTelegramConnection(): Promise<TestConnectionResult> {
   }
 
   return { success: true, campaignCount: topics.length };
+}
+
+// ─── Save Google Settings ──────────────────────────────────────────────────
+
+export async function saveGoogleSettings(
+  formData: FormData,
+): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const safeBrowsingApiKey = (formData.get("safeBrowsingApiKey") as string)?.trim();
+
+  if (!safeBrowsingApiKey) {
+    return { success: false, error: "API Key is required" };
+  }
+
+  await setSetting("google.safeBrowsingApiKey", safeBrowsingApiKey);
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+// ─── Disconnect Google ─────────────────────────────────────────────────────
+
+export async function disconnectGoogle(): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  await prisma.integrationSetting.deleteMany({
+    where: { key: { startsWith: "google." } },
+  });
+
+  revalidatePath("/settings");
+  return { success: true };
 }
 
 // ─── Disconnect Telegram ───────────────────────────────────────────────────

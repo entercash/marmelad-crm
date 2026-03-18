@@ -14,6 +14,8 @@ function isSensitiveKey(key: string): boolean {
   if (key === "adspect.apiKey") return true;
   // telegram
   if (key === "telegram.botToken") return true;
+  // google
+  if (key === "google.safeBrowsingApiKey") return true;
   return false;
 }
 
@@ -265,6 +267,23 @@ export async function getTelegramSettings(): Promise<TelegramSettingsData> {
 export async function isTelegramConfigured(): Promise<boolean> {
   const { botToken, chatId } = await getTelegramSettings();
   return !!(botToken && chatId);
+}
+
+// ─── Google-specific helpers ────────────────────────────────────────────────
+
+export interface GoogleSettingsData {
+  safeBrowsingApiKey: string | null;
+}
+
+/** Load Google Safe Browsing API key from DB. */
+export async function getGoogleSettings(): Promise<GoogleSettingsData> {
+  return { safeBrowsingApiKey: await getSetting("google.safeBrowsingApiKey") };
+}
+
+/** Check if Google Safe Browsing is configured. */
+export async function isGoogleConfigured(): Promise<boolean> {
+  const { safeBrowsingApiKey } = await getGoogleSettings();
+  return !!safeBrowsingApiKey;
 }
 
 /** Get the set of accountIds that have Taboola credentials saved. */

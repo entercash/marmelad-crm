@@ -168,13 +168,14 @@ function determineStatus(result: {
   // SSL expired
   if (result.sslExpiry && result.sslExpiry < new Date()) return "SSL_ERROR";
 
-  // HTTP success range
-  if (result.httpStatus >= 200 && result.httpStatus < 400) return "UP";
-
   // Blocked / banned patterns
   if (result.httpStatus === 403 || result.httpStatus === 451) return "BANNED";
 
-  // Server errors or other failures
+  // Server responds (any non-5xx) — domain is UP.
+  // 404 is normal for cloaked landing pages, 401/302/etc. also mean server is alive.
+  if (result.httpStatus < 500) return "UP";
+
+  // 5xx — server error, domain is effectively down
   return "DOWN";
 }
 

@@ -387,6 +387,11 @@ async function getAdspectStatsBySite(
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const rows = await client.getFunnelBySite({ streamIds, dateFrom: df, dateTo: dt });
 
+    console.log(`[getAdspectStatsBySite] streams: ${streamIds.length}, rows: ${rows.length}`);
+    if (rows.length > 0) {
+      console.log(`[getAdspectStatsBySite] FIRST 5 sub_ids:`, rows.slice(0, 5).map(r => `"${r.sub_id}" clicks=${r.clicks} q=${r.quality}`));
+    }
+
     const map = new Map<string, AdspectSiteStats>();
     for (const row of rows) {
       if (!row.sub_id) continue;
@@ -397,6 +402,26 @@ async function getAdspectStatsBySite(
         adspectClicks: totalClicks,
       });
     }
+
+    // Re-key: Adspect sub_id = Taboola numeric site_id (e.g. "1374768").
+    // Also add entries keyed by slug (e.g. "reach-express") for easy lookup.
+    if (siteExternalIds.length > 0) {
+      const pubs = await prisma.$queryRaw<{ externalId: string; numericId: number | null }[]>`
+        SELECT "externalId", "numericId" FROM "publishers"
+        WHERE "externalId" IN (${Prisma.join(siteExternalIds)})
+          AND "numericId" IS NOT NULL
+      `;
+      for (const p of pubs) {
+        if (!p.numericId) continue;
+        const numKey = String(p.numericId);
+        const stats = map.get(numKey);
+        if (stats && !map.has(p.externalId)) {
+          map.set(p.externalId, stats);
+        }
+      }
+    }
+
+    console.log(`[getAdspectStatsBySite] map size: ${map.size}, sample keys:`, Array.from(map.keys()).slice(0, 10));
 
     if (redisClient) {
       Promise.race([
@@ -504,6 +529,13 @@ export async function getPublisherStats(params: {
       getAdspectStatsBySite(siteIds, dateFrom, dateTo),
     ]);
 
+  // Debug adspect matching for first publisher
+  if (rawRows.length > 0 && adspectStats) {
+    const sample = rawRows[0];
+    console.log(`[publishers:adspect-match] First site: externalId="${sample.siteExternalId}" numericId=${sample.siteNumericId} name="${sample.siteName}" domain="${sample.siteUrl}"`);
+    console.log(`[publishers:adspect-match] adspect map has ${adspectStats.size} entries, match: ext=${adspectStats.has(sample.siteExternalId)} num=${sample.siteNumericId ? adspectStats.has(String(sample.siteNumericId)) : false} name=${adspectStats.has(sample.siteName)}`);
+  }
+
   // 6. Merge Taboola + Keitaro (exact site match) + Adspect
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
     const clicks = Number(r.clicks);
@@ -537,8 +569,14 @@ export async function getPublisherStats(params: {
     const profit = revenue !== null ? revenue - spend : null;
     const roi = revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null;
 
-    // Adspect: match by siteExternalId, then siteName, then domain
-    let adspect = adspectStats?.get(r.siteExternalId) ?? adspectStats?.get(r.siteName) ?? null;
+    // Adspect: match by siteExternalId → numericId → siteName → domain
+    let adspect = adspectStats?.get(r.siteExternalId) ?? null;
+    if (!adspect && r.siteNumericId && adspectStats) {
+      adspect = adspectStats.get(String(r.siteNumericId)) ?? null;
+    }
+    if (!adspect && adspectStats) {
+      adspect = adspectStats.get(r.siteName) ?? null;
+    }
     if (!adspect && r.siteUrl && adspectStats) {
       adspect = adspectStats.get(r.siteUrl) ?? null;
     }
@@ -640,11 +678,11 @@ export async function getPublisherDailyTrends(
       if (keitaroIds.length > 0) {
         const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
 
-        // Group by day + sub_id_4 for exact per-site daily stats
-        // sub_id_4 = src_id = {site_id} (Taboola publisher numeric ID)
+        // Group by day + sub_id_3 for exact per-site daily stats
+        // sub_id_3 = utm_source = {site} (Taboola publisher slug)
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-          grouping: ["day", "campaign_id", "sub_id_4"],
+          grouping: ["day", "campaign_id", "sub_id_3"],
           metrics: ["conversions", "revenue"],
           limit: 100_000,
           offset: 0,
@@ -755,6 +793,28 @@ export async function getPublisherDailyTrends(
     }
   } catch (err) {
     console.error("[getPublisherDailyTrends] Adspect error:", err);
+  }
+
+  // 3b. Build numericId → slug lookup for Adspect matching
+  //     Adspect sub_id = Taboola numeric site_id (e.g. "1374768")
+  //     Our keys are siteExternalId = slug (e.g. "reach-express")
+  const numericToSlug = new Map<string, string>();
+  if (botByDay.size > 0) {
+    const pubs = await prisma.$queryRaw<{ externalId: string; numericId: number | null }[]>`
+      SELECT "externalId", "numericId" FROM "publishers"
+      WHERE "externalId" IN (${Prisma.join(siteExternalIds)})
+        AND "numericId" IS NOT NULL
+    `;
+    for (const p of pubs) {
+      if (p.numericId) numericToSlug.set(String(p.numericId), p.externalId);
+    }
+    // Re-key botByDay entries from numeric ID to slug
+    for (const [numId, dayMap] of Array.from(botByDay.entries())) {
+      const slug = numericToSlug.get(numId);
+      if (slug && !botByDay.has(slug)) {
+        botByDay.set(slug, dayMap);
+      }
+    }
   }
 
   // 4. Merge into SiteTrends

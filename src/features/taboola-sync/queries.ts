@@ -183,22 +183,57 @@ export async function getTaboolaAccounts(): Promise<TaboolaAccountRow[]> {
   });
 }
 
+// ─── Campaign status counts ─────────────────────────────────────────────────────
+
+export type CampaignStatusCounts = Record<string, number> & { ALL: number };
+
+export async function getTaboolaCampaignCounts(): Promise<CampaignStatusCounts> {
+  const taboola = await prisma.trafficSource.findFirst({
+    where: { slug: "taboola" },
+    select: { id: true },
+  });
+  if (!taboola) return { ALL: 0 };
+
+  const groups = await prisma.campaign.groupBy({
+    by: ["status"],
+    where: { trafficSourceId: taboola.id },
+    _count: true,
+  });
+
+  const counts: CampaignStatusCounts = { ALL: 0 };
+  for (const g of groups) {
+    counts[g.status] = g._count;
+    counts.ALL += g._count;
+  }
+  return counts;
+}
+
 // ─── Campaign list ──────────────────────────────────────────────────────────────
 
-export async function getTaboolaCampaigns(): Promise<TaboolaCampaignRow[]> {
+export async function getTaboolaCampaigns(
+  statusFilter?: string,
+  page = 1,
+  pageSize = 10,
+): Promise<{ rows: TaboolaCampaignRow[]; total: number }> {
   const taboola = await prisma.trafficSource.findFirst({
     where: { slug: "taboola" },
     select: { id: true },
   });
 
-  if (!taboola) return [];
+  if (!taboola) return { rows: [], total: 0 };
 
-  // Status sort priority: ACTIVE → PENDING_REVIEW → REJECTED → PAUSED → STOPPED → ARCHIVED
-  // Prisma sorts enums by declaration order in schema, so asc gives correct priority
+  const where: Record<string, unknown> = { trafficSourceId: taboola.id };
+  if (statusFilter && statusFilter !== "ALL") {
+    where.status = statusFilter;
+  }
+
+  const total = await prisma.campaign.count({ where });
+
   const campaigns = await prisma.campaign.findMany({
-    where: { trafficSourceId: taboola.id },
+    where,
     orderBy: [{ status: "asc" }, { name: "asc" }],
-    take: 200,
+    skip: (page - 1) * pageSize,
+    take: pageSize,
     select: {
       id: true,
       name: true,
@@ -220,15 +255,18 @@ export async function getTaboolaCampaigns(): Promise<TaboolaCampaignRow[]> {
   });
   const spendMap = new Map(spendAgg.map((r) => [r.campaignId, Number(r._sum.spend ?? 0)]));
 
-  return campaigns.map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-    currency: c.currency,
-    dailyBudget: c.dailyBudget !== null ? Number(c.dailyBudget) : null,
-    totalSpend: spendMap.get(c.id) ?? 0,
-    adAccountName: c.adAccount?.name ?? null,
-    lastSyncedAt: c.lastSyncedAt,
-    updatedAt: c.updatedAt,
-  }));
+  return {
+    rows: campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      currency: c.currency,
+      dailyBudget: c.dailyBudget !== null ? Number(c.dailyBudget) : null,
+      totalSpend: spendMap.get(c.id) ?? 0,
+      adAccountName: c.adAccount?.name ?? null,
+      lastSyncedAt: c.lastSyncedAt,
+      updatedAt: c.updatedAt,
+    })),
+    total,
+  };
 }

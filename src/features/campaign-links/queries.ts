@@ -262,7 +262,11 @@ async function getCommissionMultipliers(
            (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) as multiplier
     FROM "campaigns" c
     JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-    LEFT JOIN "accounts" a ON a."externalId" = aa."externalId"
+    LEFT JOIN "integration_settings" iset
+      ON iset."value" = aa."externalId"
+      AND iset."key" LIKE 'taboola.%.taboolaAccountId'
+    LEFT JOIN "accounts" a
+      ON a."id" = SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
     LEFT JOIN "agencies" ag ON ag."id" = COALESCE(a."agencyId", aa."agencyId")
     WHERE c."externalId" IN (${Prisma.join(campaignExternalIds)})
   `;

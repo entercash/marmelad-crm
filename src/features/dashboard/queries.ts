@@ -119,13 +119,23 @@ export async function getDashboardSummary(
 
     let spent = adSpend;
 
-    // Account purchase costs are one-time, not daily — only include in all-time view
-    if (isAllTime) {
+    // Account purchase costs — attributed to createdAt date, with commissions
+    {
       const accounts = await getAccounts();
       for (const a of accounts) {
         const accountCost = a.accountCostUsd ?? 0;
+        if (accountCost === 0) continue;
+
+        // Filter by createdAt date if date range is specified
+        if (dateFrom && dateTo) {
+          const created = a.createdAt.toISOString().slice(0, 10);
+          if (created < dateFrom || created > dateTo) continue;
+        }
+
+        const commPct = a.commissionPercent ?? 0;
         const cryptoPct = a.cryptoPaymentPercent ?? 0;
-        spent += accountCost * (1 + cryptoPct / 100);
+        const multiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
+        spent += accountCost * multiplier;
       }
     }
 
@@ -281,7 +291,11 @@ export async function getTopAgenciesBySpend(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        JOIN "accounts" a ON a."externalId" = aa."externalId"
+        LEFT JOIN "integration_settings" iset2
+          ON iset2."value" = aa."externalId"
+          AND iset2."key" LIKE 'taboola.%.taboolaAccountId'
+        JOIN "accounts" a
+          ON a."id" = SUBSTRING(iset2."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
         JOIN "agencies" ag ON ag."id" = a."agencyId"
         WHERE a."agencyId" IS NOT NULL ${dateClause}
         GROUP BY ag."id", ag."name"
@@ -328,7 +342,11 @@ export async function getSpendByAccount(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        JOIN "accounts" a ON a."externalId" = aa."externalId"
+        LEFT JOIN "integration_settings" iset2
+          ON iset2."value" = aa."externalId"
+          AND iset2."key" LIKE 'taboola.%.taboolaAccountId'
+        JOIN "accounts" a
+          ON a."id" = SUBSTRING(iset2."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
         LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
         ${dateClause}
         GROUP BY a."id", a."name", ag."name"

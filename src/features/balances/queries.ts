@@ -137,12 +137,23 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
     }
 
     // Fetch raw USD spend from campaign_stats_daily via AdAccount bridge (no commissions)
-    const externalIds = accounts
-      .map((a) => a.externalId)
-      .filter((id): id is string => id !== null && id !== "");
+    // Bridge: Account.id → integration_settings (taboola.<accountId>.taboolaAccountId) → AdAccount.externalId
+    const accountIds = accounts.map((a) => a.id);
+    const settingRows = await prisma.integrationSetting.findMany({
+      where: {
+        key: { in: accountIds.map((id) => `taboola.${id}.taboolaAccountId`) },
+      },
+      select: { key: true, value: true },
+    });
+    const taboolaToAccountId = new Map<string, string>();
+    for (const s of settingRows) {
+      const match = s.key.match(/^taboola\.(.+)\.taboolaAccountId$/);
+      if (match && s.value) taboolaToAccountId.set(s.value, match[1]);
+    }
+    const adAccountExternalIds = Array.from(taboolaToAccountId.keys());
 
     let spendMap: Record<string, number> = {};
-    if (externalIds.length > 0) {
+    if (adAccountExternalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
         { externalId: string; totalUsd: Prisma.Decimal }[]
       >`
@@ -151,17 +162,20 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        WHERE aa."externalId" IN (${Prisma.join(externalIds)})
+        WHERE aa."externalId" IN (${Prisma.join(adAccountExternalIds)})
         GROUP BY aa."externalId"
       `;
       for (const sr of spendRows) {
-        spendMap[sr.externalId] = Number(sr.totalUsd);
+        const accountId = taboolaToAccountId.get(sr.externalId);
+        if (accountId) {
+          spendMap[accountId] = Number(sr.totalUsd);
+        }
       }
     }
 
     return accounts.map((acct) => {
       const totalTopUp = topUpMap.get(acct.id) ?? 0;
-      const totalSpent = acct.externalId ? (spendMap[acct.externalId] ?? 0) : 0;
+      const totalSpent = spendMap[acct.id] ?? 0;
       return {
         accountId:   acct.id,
         accountName: acct.name,

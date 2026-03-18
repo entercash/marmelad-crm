@@ -86,17 +86,23 @@ const COUNTRY_NAMES: Record<string, string> = {
 
 // ─── Dropdown queries ───────────────────────────────────────────────────────
 
-/** Get distinct countries from publisher_stats_daily for the filter dropdown. */
+/** Get distinct countries from CampaignLink for the filter dropdown.
+ * Uses CampaignLink.country (target GEO of campaign mapping) since
+ * Taboola API doesn't provide per-publisher country data.
+ */
 export async function getDistinctCountries(): Promise<CountryOption[]> {
-  const rows = await prisma.$queryRaw<{ geo: string }[]>`
-    SELECT DISTINCT "geo"
-    FROM "publisher_stats_daily"
-    WHERE "geo" != 'XX'
-    ORDER BY "geo"
-  `;
-  return rows.map((r) => ({
-    code: r.geo,
-    name: COUNTRY_NAMES[r.geo] || r.geo,
+  const links = await prisma.campaignLink.findMany({
+    where: { country: { not: null } },
+    select: { country: true },
+    distinct: ["country"],
+  });
+  const codes = links
+    .map((l) => l.country!)
+    .filter((c) => /^[A-Z]{2}$/.test(c))
+    .sort();
+  return codes.map((code) => ({
+    code,
+    name: COUNTRY_NAMES[code] || code,
   }));
 }
 
@@ -139,7 +145,7 @@ async function getSiteCampaignAssociations(
   const conditions: Prisma.Sql[] = [
     Prisma.sql`p."externalId" IN (${Prisma.join(siteExternalIds)})`,
   ];
-  if (country) conditions.push(Prisma.sql`psd."geo" = ${country}`);
+  // Country filtering handled at caller level via CampaignLink.country → campaign IDs
   if (dateFrom && dateTo) conditions.push(Prisma.sql`psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`);
 
   const rows = await prisma.$queryRaw<
@@ -400,10 +406,13 @@ export async function getPublisherStats(params: {
   const { country, page = 1, perPage = 50, dateFrom, dateTo, linkedOnly } = params;
   const offset = (page - 1) * perPage;
 
-  // If linkedOnly, restrict to campaigns in CampaignLink
+  // If linkedOnly or country filter, restrict to campaigns in CampaignLink
   let linkedCampaignIds: string[] | null = null;
-  if (linkedOnly) {
+  if (linkedOnly || country) {
+    const linkWhere: Prisma.CampaignLinkWhereInput = {};
+    if (country) linkWhere.country = country;
     const links = await prisma.campaignLink.findMany({
+      where: linkWhere,
       select: { taboolaCampaignExternalId: true },
     });
     linkedCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
@@ -412,7 +421,7 @@ export async function getPublisherStats(params: {
 
   // Build WHERE conditions for publisher_stats_daily
   const conditions: Prisma.Sql[] = [];
-  if (country) conditions.push(Prisma.sql`psd."geo" = ${country}`);
+  // GEO filter: via CampaignLink.country → campaign (not psd.geo which is unreliable)
   if (dateFrom && dateTo) conditions.push(Prisma.sql`psd."date" >= ${dateFrom}::date AND psd."date" <= ${dateTo}::date`);
   if (linkedCampaignIds) {
     conditions.push(Prisma.sql`c."externalId" IN (${Prisma.join(linkedCampaignIds)})`);

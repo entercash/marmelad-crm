@@ -21,6 +21,7 @@ import {
   syncTaboolaPublisherStatsDaily,
 } from "../../services/sync/taboola.sync";
 import { getTaboolaConnectedAccountIds } from "../../features/integration-settings/queries";
+import { checkBalanceAlerts } from "../../services/notifications/telegram-alerts";
 
 // ─── Main router ──────────────────────────────────────────────────────────────
 
@@ -215,4 +216,14 @@ async function handleFullSync(
   console.log(
     `[taboola:full-sync] Complete | mode=${mode} | accounts=${accountIds.size} | campaigns=${totalStats.campaigns} stats=${totalStats.campaignStats} publishers=${totalStats.publisherStats} items=${totalStats.itemStats}`,
   );
+
+  // Check account balances and send Telegram alerts (non-blocking)
+  try {
+    const alerts = await checkBalanceAlerts();
+    if (alerts > 0) {
+      console.log(`[taboola:full-sync] Balance alerts: sent ${alerts}`);
+    }
+  } catch (err) {
+    console.error("[taboola:full-sync] Balance alert check error:", err);
+  }
 }

@@ -72,6 +72,12 @@ export class AdspectClient {
     }
 
     const text = await res.text();
+
+    // Empty response → return empty array (valid for report endpoints)
+    if (!text.trim()) {
+      return [] as unknown as T;
+    }
+
     try {
       return JSON.parse(text) as T;
     } catch {

@@ -357,9 +357,19 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
 
         console.log(`[taboola:publishers] Account ${account?.name}: ${pubResponse.results.length} publisher stat rows`);
 
-        // Debug: log first raw row to verify field names
+        // Debug: log first raw row to verify field names + GEO extraction
         if (pubResponse.results.length > 0) {
-          console.log(`[taboola:publishers] FIRST RAW ROW:`, JSON.stringify(pubResponse.results[0]));
+          const sample = pubResponse.results[0];
+          console.log(`[taboola:publishers] FIRST RAW ROW:`, JSON.stringify(sample));
+          console.log(`[taboola:publishers] ALL KEYS:`, Object.keys(sample));
+          const rawGeo = dyn(sample, "country", "country_code", "geo") ?? "";
+          console.log(`[taboola:publishers] GEO extraction: raw="${rawGeo}" valid=${/^[A-Z]{2}$/.test(rawGeo)}`);
+          // Count rows with valid country
+          const withCountry = pubResponse.results.filter(r => {
+            const g = dyn(r, "country", "country_code", "geo") ?? "";
+            return /^[A-Z]{2}$/.test(g);
+          }).length;
+          console.log(`[taboola:publishers] Rows with valid country: ${withCountry} / ${pubResponse.results.length}`);
         }
 
         // Build publisher ID map (auto-create publishers for new sites)
@@ -384,16 +394,25 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
             },
           });
 
+          const siteName = dyn(row, "site_name", "publisher_name") || siteKey;
+          const domain = extractDomain(siteName) ?? extractDomain(siteKey);
+
           if (existing) {
             publisherIdMap.set(siteKey, existing.id);
+            // Update name/domain if previously empty
+            if (!existing.domain && domain) {
+              await prisma.publisher.update({
+                where: { id: existing.id },
+                data: { domain },
+              });
+            }
           } else {
-            const siteName = dyn(row, "site_name", "publisher_name") || siteKey;
             const newPub = await prisma.publisher.create({
               data: {
                 externalId: siteKey,
                 trafficSourceId: taboola.id,
                 name: siteName,
-                domain: extractDomain(siteName),
+                domain,
               },
             });
             publisherIdMap.set(siteKey, newPub.id);

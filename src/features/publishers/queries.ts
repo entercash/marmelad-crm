@@ -228,30 +228,17 @@ async function getKeitaroStatsBySite(
     });
 
     const idSet = new Set(keitaroExternalIds);
-    console.log(`[getKeitaroStatsBySite] keitaroIds: [${Array.from(idSet).join(",")}], report rows: ${report.rows.length}`);
-
-    // Debug first row
-    if (report.rows.length > 0) {
-      const sample = report.rows[0];
-      console.log(`[getKeitaroStatsBySite] FIRST ROW:`, JSON.stringify(sample));
-    }
 
     const map = new Map<string, KeitaroSiteStats>();
-    let matched = 0;
-    let unmatched = 0;
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      if (!campId || !idSet.has(campId)) {
-        unmatched++;
-        continue;
-      }
+      if (!campId || !idSet.has(campId)) continue;
 
       const siteId = String(row.sub_id_3 ?? "").trim();
       if (!siteId) continue;
 
       const leads = Number(row.conversions ?? 0);
       const revenue = Number(row.revenue ?? 0);
-      matched++;
 
       const existing = map.get(siteId);
       if (existing) {
@@ -261,7 +248,6 @@ async function getKeitaroStatsBySite(
         map.set(siteId, { leads, revenue });
       }
     }
-    console.log(`[getKeitaroStatsBySite] matched=${matched} unmatched=${unmatched} sites=${map.size}, top5:`, Array.from(map.entries()).slice(0, 5).map(([k, v]) => `${k}:${v.leads}L`));
     return map;
   } catch (err) {
     console.error("[getKeitaroStatsBySite] Keitaro API error:", err);
@@ -387,11 +373,6 @@ async function getAdspectStatsBySite(
     const client = new AdspectClient({ apiKey: settings.apiKey });
     const rows = await client.getFunnelBySite({ streamIds, dateFrom: df, dateTo: dt });
 
-    console.log(`[getAdspectStatsBySite] streams: ${streamIds.length}, rows: ${rows.length}`);
-    if (rows.length > 0) {
-      console.log(`[getAdspectStatsBySite] FIRST 5 sub_ids:`, rows.slice(0, 5).map(r => `"${r.sub_id}" clicks=${r.clicks} q=${r.quality}`));
-    }
-
     const map = new Map<string, AdspectSiteStats>();
     for (const row of rows) {
       if (!row.sub_id) continue;
@@ -420,8 +401,6 @@ async function getAdspectStatsBySite(
         }
       }
     }
-
-    console.log(`[getAdspectStatsBySite] map size: ${map.size}, sample keys:`, Array.from(map.keys()).slice(0, 10));
 
     if (redisClient) {
       Promise.race([
@@ -510,17 +489,18 @@ export async function getPublisherStats(params: {
     `,
   );
 
-  // 3. Get CampaignLinks (filtered by country)
-  const links = await getCampaignLinksForPublishers(country);
+  // 3. Get ALL CampaignLinks (no country filter — GEO is already applied to publisher_stats_daily)
+  //    We need all links for Keitaro matching and revenue calculation.
+  const links = await getCampaignLinksForPublishers();
   const linkByTaboolaCampaign = new Map(
     links.map((l) => [l.taboolaCampaignExternalId, l]),
   );
 
-  // 4. Site → campaign associations
+  // 4. Site → campaign associations (no country filter — need all campaigns for revenue calc)
   const siteIds = rawRows.map((r) => r.siteExternalId);
-  const siteCampaigns = await getSiteCampaignAssociations(siteIds, country, dateFrom, dateTo);
+  const siteCampaigns = await getSiteCampaignAssociations(siteIds, undefined, dateFrom, dateTo);
 
-  // 5. Keitaro exact matching by site_id (sub_id_4) + Adspect
+  // 5. Keitaro exact matching by sub_id_3 (site slug) + Adspect
   const keitaroExternalIds = Array.from(new Set(links.map((l) => Number(l.keitaroCampaignExternalId)).filter(Boolean)));
 
   const [keitaroSiteStats, adspectStats] =
@@ -528,13 +508,6 @@ export async function getPublisherStats(params: {
       getKeitaroStatsBySite(keitaroExternalIds, links, dateFrom, dateTo),
       getAdspectStatsBySite(siteIds, dateFrom, dateTo),
     ]);
-
-  // Debug adspect matching for first publisher
-  if (rawRows.length > 0 && adspectStats) {
-    const sample = rawRows[0];
-    console.log(`[publishers:adspect-match] First site: externalId="${sample.siteExternalId}" numericId=${sample.siteNumericId} name="${sample.siteName}" domain="${sample.siteUrl}"`);
-    console.log(`[publishers:adspect-match] adspect map has ${adspectStats.size} entries, match: ext=${adspectStats.has(sample.siteExternalId)} num=${sample.siteNumericId ? adspectStats.has(String(sample.siteNumericId)) : false} name=${adspectStats.has(sample.siteName)}`);
-  }
 
   // 6. Merge Taboola + Keitaro (exact site match) + Adspect
   const rows: PublisherStatsRow[] = rawRows.map((r) => {

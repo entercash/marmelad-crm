@@ -15,4 +15,5 @@ export type {
   KeitaroMetric,
   KeitaroFilter,
   KeitaroCampaign,
+  KeitaroConversion,
 } from "./types";

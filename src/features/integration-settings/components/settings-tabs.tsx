@@ -9,6 +9,8 @@ import { KeitaroConnectionsList } from "./keitaro-connections-list";
 import type { KeitaroInstanceOption } from "./keitaro-connections-list";
 import { AdspectConnection } from "./adspect-connection";
 import type { AdspectConnectionProps } from "./adspect-connection";
+import { TelegramConnection } from "./telegram-connection";
+import type { TelegramConnectionProps } from "./telegram-connection";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -16,11 +18,12 @@ interface SettingsTabsProps {
   taboolaAccounts: TaboolaAccountOption[];
   keitaroInstances: KeitaroInstanceOption[];
   adspect: AdspectConnectionProps;
+  telegram: TelegramConnectionProps;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect }: SettingsTabsProps) {
+export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect, telegram }: SettingsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "taboola";
@@ -37,6 +40,7 @@ export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect }: Set
         <TabsTrigger value="taboola">Taboola</TabsTrigger>
         <TabsTrigger value="keitaro">Keitaro</TabsTrigger>
         <TabsTrigger value="adspect">Adspect</TabsTrigger>
+        <TabsTrigger value="telegram">Telegram</TabsTrigger>
       </TabsList>
 
       <TabsContent value="taboola">
@@ -49,6 +53,10 @@ export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect }: Set
 
       <TabsContent value="adspect">
         <AdspectConnection {...adspect} />
+      </TabsContent>
+
+      <TabsContent value="telegram">
+        <TelegramConnection {...telegram} />
       </TabsContent>
     </Tabs>
   );

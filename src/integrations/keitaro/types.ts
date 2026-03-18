@@ -119,3 +119,35 @@ export interface KeitaroCampaign {
   state: "active" | "disabled" | "deleted";
   group_id?: number | null;
 }
+
+// ─── Conversions (individual) ───────────────────────────────────────────────
+
+/** A single conversion record from Keitaro /conversions endpoint. */
+export interface KeitaroConversion {
+  id: number;
+  click_id: string;
+  campaign_id: number;
+  datetime: string;           // "YYYY-MM-DD HH:mm:ss"
+  status: string;             // "lead", "sale", "rejected", etc.
+  revenue: number | string;
+  sub_id_1?: string;          // campaign_id (Taboola)
+  sub_id_2?: string;          // campaign_item_id
+  sub_id_3?: string;          // site slug
+  sub_id_4?: string;          // site_id (may be empty)
+  sub_id_5?: string;          // platform
+  sub_id_6?: string;          // country
+  sub_id_7?: string;          // click_id
+  sub_id_8?: string;          // account_id
+  sub_id_9?: string;          // title
+  sub_id_10?: string;         // campaign_name
+  country?: string;
+}
+
+export interface KeitaroConversionsResponse {
+  conversions: KeitaroConversion[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total_count: number;
+  };
+}

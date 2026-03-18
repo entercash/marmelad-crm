@@ -20,6 +20,7 @@ import type {
   KeitaroMetric,
   KeitaroGroupingField,
   KeitaroCampaign,
+  KeitaroConversion,
 } from "./types";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -173,6 +174,30 @@ export class KeitaroClient {
     range: KeitaroDateRange,
   ): Promise<KeitaroReportResponse> {
     return this.getConversionStatsDaily(range);
+  }
+
+  // ── Individual Conversions ─────────────────────────────────────────────
+
+  /**
+   * Fetch individual conversion records from Keitaro.
+   * Uses the /conversions endpoint with date filters.
+   * Returns newest-first, limited to `limit` records.
+   */
+  async getConversions(params: {
+    dateFrom: string;   // YYYY-MM-DD
+    dateTo: string;     // YYYY-MM-DD
+    limit?: number;
+  }): Promise<KeitaroConversion[]> {
+    const qs = new URLSearchParams({
+      "range[from]": params.dateFrom,
+      "range[to]": params.dateTo,
+      limit: String(params.limit ?? 100),
+      sort: "-datetime",
+    });
+    const resp = await this.get<KeitaroConversion[]>(
+      `/conversions?${qs.toString()}`,
+    );
+    return resp;
   }
 }
 

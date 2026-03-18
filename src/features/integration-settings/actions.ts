@@ -11,7 +11,8 @@ import type { TaboolaConfig } from "@/integrations/taboola/client";
 import { AdspectClient }   from "@/integrations/adspect/client";
 import { prisma }          from "@/lib/prisma";
 import crypto from "crypto";
-import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings } from "./queries";
+import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings, getTelegramSettings } from "./queries";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 // ─── Save Keitaro Settings ──────────────────────────────────────────────────
 
@@ -308,6 +309,75 @@ export async function disconnectAdspect(): Promise<ActionResult> {
 
   await prisma.integrationSetting.deleteMany({
     where: { key: { startsWith: "adspect." } },
+  });
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+// ─── Save Telegram Settings ────────────────────────────────────────────────
+
+export async function saveTelegramSettings(
+  formData: FormData,
+): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const botToken = (formData.get("botToken") as string)?.trim();
+  const chatId = (formData.get("chatId") as string)?.trim();
+  const topicId = (formData.get("topicId") as string)?.trim() || "";
+
+  if (!botToken) return { success: false, error: "Bot Token is required" };
+  if (!chatId) return { success: false, error: "Chat ID is required" };
+
+  await setSetting("telegram.botToken", botToken);
+  await setSetting("telegram.chatId", chatId);
+  if (topicId) {
+    await setSetting("telegram.topicId", topicId);
+  } else {
+    // Clear topic if empty
+    await prisma.integrationSetting.deleteMany({
+      where: { key: "telegram.topicId" },
+    });
+  }
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
+// ─── Test Telegram Connection ──────────────────────────────────────────────
+
+export async function testTelegramConnection(): Promise<TestConnectionResult> {
+  const denied = await guardAdmin();
+  if (denied) return { success: false, error: "Admin access required" };
+
+  const settings = await getTelegramSettings();
+  if (!settings.botToken || !settings.chatId) {
+    return { success: false, error: "Telegram is not configured. Save Bot Token and Chat ID first." };
+  }
+
+  const result = await sendTelegramMessage({
+    botToken: settings.botToken,
+    chatId: settings.chatId,
+    topicId: settings.topicId,
+    text: "✅ Marmelad CRM — Telegram connection test successful!",
+  });
+
+  if (!result.ok) {
+    return { success: false, error: result.error ?? "Failed to send message" };
+  }
+
+  return { success: true, campaignCount: 1 };
+}
+
+// ─── Disconnect Telegram ───────────────────────────────────────────────────
+
+export async function disconnectTelegram(): Promise<ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  await prisma.integrationSetting.deleteMany({
+    where: { key: { startsWith: "telegram." } },
   });
 
   revalidatePath("/settings");

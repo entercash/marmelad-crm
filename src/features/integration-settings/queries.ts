@@ -12,6 +12,8 @@ function isSensitiveKey(key: string): boolean {
   if (/^taboola\..+\.(clientId|clientSecret)$/.test(key)) return true;
   // adspect
   if (key === "adspect.apiKey") return true;
+  // telegram
+  if (key === "telegram.botToken") return true;
   return false;
 }
 
@@ -231,6 +233,30 @@ export async function getAdspectSettings(): Promise<AdspectSettingsData> {
 export async function isAdspectConfigured(): Promise<boolean> {
   const { apiKey } = await getAdspectSettings();
   return !!apiKey;
+}
+
+// ─── Telegram-specific helpers ──────────────────────────────────────────────
+
+export interface TelegramSettingsData {
+  botToken: string | null;
+  chatId: string | null;
+  topicId: string | null;
+}
+
+/** Load Telegram bot settings from DB. */
+export async function getTelegramSettings(): Promise<TelegramSettingsData> {
+  const [botToken, chatId, topicId] = await Promise.all([
+    getSetting("telegram.botToken"),
+    getSetting("telegram.chatId"),
+    getSetting("telegram.topicId"),
+  ]);
+  return { botToken, chatId, topicId };
+}
+
+/** Check if Telegram is configured (bot token and chat ID present). */
+export async function isTelegramConfigured(): Promise<boolean> {
+  const { botToken, chatId } = await getTelegramSettings();
+  return !!(botToken && chatId);
 }
 
 /** Get the set of accountIds that have Taboola credentials saved. */

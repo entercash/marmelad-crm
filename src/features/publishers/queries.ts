@@ -506,7 +506,8 @@ export async function getPublisherStats(params: {
   const [keitaroSiteStats, adspectStats] =
     await Promise.all([
       getKeitaroStatsBySite(keitaroExternalIds, links, dateFrom, dateTo),
-      getAdspectStatsBySite(siteIds, dateFrom, dateTo),
+      // Adspect: always fetch full range — bot% reflects overall publisher quality
+      getAdspectStatsBySite(siteIds),
     ]);
 
   // 6. Merge Taboola + Keitaro (exact site match) + Adspect

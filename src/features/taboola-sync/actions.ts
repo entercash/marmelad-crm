@@ -471,6 +471,11 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
               const geo = campaignGeoMap.get(campaignExternalId) ?? "XX";
               const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 
+              // Use visible_impressions and vctr (what Taboola UI shows)
+              const r = row as any;
+              const visibleImpressions = Number(r.visible_impressions ?? r.impressions ?? 0);
+              const vctr = r.vctr != null ? Number(r.vctr) : null;
+
               return prisma.publisherStatsDaily.upsert({
                 where: {
                   publisherId_campaignId_date_geo: { publisherId, campaignId, date, geo },
@@ -478,9 +483,9 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                 update: {
                   spend: new Prisma.Decimal(spentUsd),
                   clicks: row.clicks,
-                  impressions: row.impressions,
+                  impressions: visibleImpressions,
                   cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
-                  ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                  ctr: vctr != null ? new Prisma.Decimal(vctr) : null,
                   currency: "USD",
                 },
                 create: {
@@ -490,9 +495,9 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                   geo,
                   spend: new Prisma.Decimal(spentUsd),
                   clicks: row.clicks,
-                  impressions: row.impressions,
+                  impressions: visibleImpressions,
                   cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
-                  ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                  ctr: vctr != null ? new Prisma.Decimal(vctr) : null,
                   currency: "USD",
                 },
                 select: { id: true },
@@ -602,6 +607,10 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                 const campaignItemId = itemIdMap.get(dyn(row, "item", "item_id", "content_id")!)!;
                 const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 
+                const ir = row as any;
+                const itemVisImps = Number(ir.visible_impressions ?? ir.impressions ?? 0);
+                const itemVctr = ir.vctr != null ? Number(ir.vctr) : null;
+
                 return prisma.campaignItemStatsDaily.upsert({
                   where: {
                     campaignItemId_date: { campaignItemId, date: snapshotDate },
@@ -609,9 +618,9 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                   update: {
                     spend: new Prisma.Decimal(spentUsd),
                     clicks: row.clicks,
-                    impressions: row.impressions,
+                    impressions: itemVisImps,
                     cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
-                    ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                    ctr: itemVctr != null ? new Prisma.Decimal(itemVctr) : null,
                     currency: "USD",
                   },
                   create: {
@@ -619,9 +628,9 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
                     date: snapshotDate,
                     spend: new Prisma.Decimal(spentUsd),
                     clicks: row.clicks,
-                    impressions: row.impressions,
+                    impressions: itemVisImps,
                     cpc: row.cpc != null ? new Prisma.Decimal(row.cpc) : null,
-                    ctr: row.ctr != null ? new Prisma.Decimal(row.ctr) : null,
+                    ctr: itemVctr != null ? new Prisma.Decimal(itemVctr) : null,
                     currency: "USD",
                   },
                   select: { id: true },

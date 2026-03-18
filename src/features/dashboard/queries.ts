@@ -386,7 +386,7 @@ export async function getDashboardAlerts(): Promise<DashboardAlert[]> {
         alerts.push({
           type: "low_balance",
           severity,
-          title: `${b.accountName}: $${Math.round(b.remaining).toLocaleString()}`,
+          title: `${b.agencyName ? `${b.agencyName} — ` : ""}${b.accountName}: $${Math.round(b.remaining).toLocaleString()}`,
           description: b.remaining < 0
             ? `Overdraft — spent $${Math.round(b.totalSpent).toLocaleString()} of $${Math.round(b.totalTopUp).toLocaleString()}`
             : b.remaining < 1000

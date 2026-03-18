@@ -92,9 +92,13 @@ export async function checkBalanceAlerts(): Promise<number> {
           ? `-$${Math.abs(account.remaining).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : `$${account.remaining.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+        const accountLabel = account.agencyName
+          ? `${account.agencyName} — ${account.name}`
+          : account.name;
+
         const lines = [
           `${threshold.emoji} <b>${threshold.label}</b>`,
-          `Account: ${account.name}`,
+          `Account: ${accountLabel}`,
           `Remaining: ${remaining}`,
         ];
 

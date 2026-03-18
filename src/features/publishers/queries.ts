@@ -328,7 +328,7 @@ async function getSiteCampaignClicks(
 
 const ADSPECT_CACHE_TTL = 600; // 10 minutes
 
-type AdspectSiteStats = { botPercent: number; adspectClicks: number };
+type AdspectSiteStats = { botPercent: number; adspectClicks: number; quality: number };
 
 async function getAdspectStatsBySite(
   siteExternalIds: string[],
@@ -381,6 +381,7 @@ async function getAdspectStatsBySite(
       map.set(row.sub_id, {
         botPercent: Math.round(botPct * 10) / 10,
         adspectClicks: totalClicks,
+        quality: row.quality,
       });
     }
 
@@ -555,9 +556,11 @@ export async function getPublisherStats(params: {
       adspect = adspectStats.get(r.siteUrl) ?? null;
     }
     const botPercent = adspect?.botPercent ?? null;
-    // Click discrepancy as % — how many Taboola clicks didn't reach Adspect
+    // Click discrepancy as % — compare Taboola clicks vs Adspect clean clicks.
+    // Taboola already filters bots, so compare against Adspect clean portion only.
+    // adspectCleanClicks = adspectClicks × quality (quality = 0–1, clean ratio)
     const clickDiscrepancy = adspect && clicks > 0
-      ? Math.round(((clicks - adspect.adspectClicks) / clicks) * 1000) / 10
+      ? Math.round(((clicks - adspect.adspectClicks * adspect.quality) / clicks) * 1000) / 10
       : null;
 
     return {

@@ -16,7 +16,10 @@
 import { prisma } from "@/lib/prisma";
 import { CRM_TIMEZONE } from "@/lib/date";
 import { createKeitaroClient } from "@/integrations/keitaro";
+import type { KeitaroConfig } from "@/integrations/keitaro";
 import type { KeitaroDateRange } from "@/integrations/keitaro";
+import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { ConfigurationError } from "@/lib/errors";
 import {
   createSyncLog,
   completeSyncLog,
@@ -28,6 +31,24 @@ import { SyncCounter } from "./types";
 import type { KeitaroSyncParams, SyncResult } from "./types";
 
 import { upsertConversionStats } from "@/services/upsert/conversion-stats.upsert";
+
+// ─── Load Keitaro config from DB ─────────────────────────────────────────────
+
+/**
+ * Load Keitaro API credentials from integration_settings (DB).
+ * Falls back to env vars (backward compat).
+ */
+async function loadKeitaroConfigFromDB(): Promise<KeitaroConfig> {
+  const settings = await getKeitaroSettings();
+
+  const apiUrl = settings.apiUrl || process.env.KEITARO_API_URL;
+  const apiKey = settings.apiKey || process.env.KEITARO_API_KEY;
+
+  if (!apiUrl) throw new ConfigurationError("KEITARO_API_URL is not set");
+  if (!apiKey) throw new ConfigurationError("KEITARO_API_KEY is not set");
+
+  return { apiUrl: apiUrl.replace(/\/$/, ""), apiKey };
+}
 
 // ─── Resolve internal IDs ──────────────────────────────────────────────────────
 
@@ -56,7 +77,8 @@ export async function syncKeitaroConversionStatsDaily(
   params: KeitaroSyncParams,
 ): Promise<SyncResult> {
   const trafficSourceId = await getKeitaroSourceId();
-  const client = createKeitaroClient();
+  const config = await loadKeitaroConfigFromDB();
+  const client = createKeitaroClient(config);
   const counter = new SyncCounter();
 
   const syncLogId = await createSyncLog({

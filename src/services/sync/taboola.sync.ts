@@ -15,7 +15,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { createTaboolaClient } from "@/integrations/taboola";
+import type { TaboolaConfig } from "@/integrations/taboola";
 import type { TaboolaItemStatRow } from "@/integrations/taboola";
+import { getTaboolaAccountSettings } from "@/features/integration-settings/queries";
+import { ConfigurationError } from "@/lib/errors";
 import {
   createSyncLog,
   completeSyncLog,
@@ -32,6 +35,31 @@ import { upsertPublishers } from "@/services/upsert/publishers.upsert";
 import { upsertCampaignStats } from "@/services/upsert/campaign-stats.upsert";
 import { upsertItemStats } from "@/services/upsert/item-stats.upsert";
 import { upsertPublisherStats } from "@/services/upsert/publisher-stats.upsert";
+
+// ─── Load Taboola config from DB ────────────────────────────────────────────
+
+/**
+ * Load Taboola API credentials from integration_settings for a given accountId.
+ * Falls back to env vars if DB settings are missing (backward compat).
+ */
+async function loadTaboolaConfigFromDB(accountId: string): Promise<TaboolaConfig> {
+  const settings = await getTaboolaAccountSettings(accountId);
+
+  const clientId = settings.clientId || process.env.TABOOLA_CLIENT_ID;
+  const clientSecret = settings.clientSecret || process.env.TABOOLA_CLIENT_SECRET;
+  const taboolaAccountId = settings.taboolaAccountId || process.env.TABOOLA_ACCOUNT_ID;
+
+  if (!clientId) throw new ConfigurationError(`TABOOLA_CLIENT_ID is not set for account ${accountId}`);
+  if (!clientSecret) throw new ConfigurationError(`TABOOLA_CLIENT_SECRET is not set for account ${accountId}`);
+  if (!taboolaAccountId) throw new ConfigurationError(`TABOOLA_ACCOUNT_ID is not set for account ${accountId}`);
+
+  return {
+    clientId,
+    clientSecret,
+    accountId: taboolaAccountId,
+    proxyUrl: settings.proxyUrl || undefined,
+  };
+}
 
 // ─── Resolve internal IDs ──────────────────────────────────────────────────────
 
@@ -85,7 +113,8 @@ export async function syncTaboolaCampaigns(
 ): Promise<SyncResult> {
   const trafficSourceId = await getTaboolaSourceId();
   const adAccountId = await resolveAdAccountId(params.accountId, trafficSourceId);
-  const client = createTaboolaClient();
+  const config = await loadTaboolaConfigFromDB(params.accountId);
+  const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 
   const syncLogId = await createSyncLog({
@@ -160,7 +189,8 @@ export async function syncTaboolaCampaignStatsDaily(
   params: TaboolaSyncParams & { dateRange: { startDate: string; endDate: string } },
 ): Promise<SyncResult> {
   const trafficSourceId = await getTaboolaSourceId();
-  const client = createTaboolaClient();
+  const config = await loadTaboolaConfigFromDB(params.accountId);
+  const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 
   const syncLogId = await createSyncLog({
@@ -231,7 +261,8 @@ export async function syncTaboolaItemStatsDaily(
   params: TaboolaSyncParams & { dateRange: { startDate: string; endDate: string } },
 ): Promise<SyncResult> {
   const trafficSourceId = await getTaboolaSourceId();
-  const client = createTaboolaClient();
+  const config = await loadTaboolaConfigFromDB(params.accountId);
+  const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 
   const syncLogId = await createSyncLog({
@@ -314,7 +345,8 @@ export async function syncTaboolaPublisherStatsDaily(
   params: TaboolaSyncParams & { dateRange: { startDate: string; endDate: string } },
 ): Promise<SyncResult> {
   const trafficSourceId = await getTaboolaSourceId();
-  const client = createTaboolaClient();
+  const config = await loadTaboolaConfigFromDB(params.accountId);
+  const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 
   const syncLogId = await createSyncLog({

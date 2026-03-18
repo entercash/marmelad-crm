@@ -57,6 +57,14 @@ export type KeitaroConversionStatsDailyPayload = {
 
 export type KeitaroJobPayload = KeitaroConversionStatsDailyPayload;
 
+// ─── Domain job payloads ─────────────────────────────────────────────────────
+
+export type DomainCheckAllPayload = {
+  type: "domain:check-all";
+};
+
+export type DomainJobPayload = DomainCheckAllPayload;
+
 // ─── Aggregate job payloads ───────────────────────────────────────────────────
 
 export type PnlAggregatePayload = {
@@ -67,6 +75,6 @@ export type PnlAggregatePayload = {
 
 // ─── Union types ──────────────────────────────────────────────────────────────
 
-export type SyncJobPayload = TaboolaJobPayload | KeitaroJobPayload;
+export type SyncJobPayload = TaboolaJobPayload | KeitaroJobPayload | DomainJobPayload;
 export type AggregateJobPayload = PnlAggregatePayload;
 export type AllJobPayloads = SyncJobPayload | AggregateJobPayload;

@@ -20,6 +20,7 @@ import { getBullMQConnection } from "../lib/bullmq-connection";
 import { toErrorMessage } from "../lib/errors";
 import { handleTaboolaJob } from "./handlers/taboola.handlers";
 import { handleKeitaroJob } from "./handlers/keitaro.handlers";
+import { handleDomainJob } from "./handlers/domain.handlers";
 import { syncQueue } from "./queues";
 import type { SyncJobPayload } from "./types";
 
@@ -64,7 +65,14 @@ async function registerSchedulers(): Promise<void> {
     { name: "keitaro:conversion-stats-daily", data: { type: "keitaro:conversion-stats-daily" as const, startDate: "AUTO_FULL", endDate: "AUTO_FULL" } },
   );
 
-  console.log("[Worker] Registered 4 job schedulers (taboola-intraday, taboola-nightly, keitaro-intraday, keitaro-nightly)");
+  // ── Domain health check: every 15 min ──
+  await syncQueue.upsertJobScheduler(
+    "domain-check",
+    { every: 15 * 60 * 1000 },
+    { name: "domain:check-all", data: { type: "domain:check-all" as const } },
+  );
+
+  console.log("[Worker] Registered 5 job schedulers (taboola-intraday, taboola-nightly, keitaro-intraday, keitaro-nightly, domain-check)");
 }
 
 // ─── Worker ───────────────────────────────────────────────────────────────────
@@ -84,6 +92,10 @@ async function main(): Promise<void> {
 
       if (type.startsWith("keitaro:")) {
         return handleKeitaroJob(job as Parameters<typeof handleKeitaroJob>[0]);
+      }
+
+      if (type.startsWith("domain:")) {
+        return handleDomainJob(job as Parameters<typeof handleDomainJob>[0]);
       }
 
       // Future sources: add routing here

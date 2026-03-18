@@ -1022,3 +1022,43 @@ model SeoLead {
   @@unique([seoBrandId, date, country])
   @@map("seo_leads")
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN 11 — DOMAIN MONITOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Health status of a monitored domain.
+enum DomainStatus {
+  UP
+  DOWN
+  SSL_ERROR
+  DNS_ERROR
+  BANNED
+  EXPIRED
+  UNKNOWN
+}
+
+/// A domain (landing page, offer page, etc.) monitored for availability,
+/// SSL certificate validity, DNS resolution, and WHOIS expiry.
+model Domain {
+  id            String       @id @default(cuid())
+  url           String       @unique            // Full URL, e.g. https://example.com
+  name          String?                          // Optional display label
+  status        DomainStatus @default(UNKNOWN)
+  httpStatus    Int?                             // Last HTTP response code
+  responseMs    Int?                             // Last response time in ms
+  sslExpiry     DateTime?                        // SSL certificate expiry date
+  sslIssuer     String?                          // SSL certificate issuer
+  dnsResolves   Boolean?                         // Whether DNS resolves
+  registrar     String?                          // Domain registrar (WHOIS)
+  domainExpiry  DateTime?                        // Domain registration expiry (WHOIS)
+  lastCheckedAt DateTime?                        // Last health check timestamp
+  lastUpAt      DateTime?                        // Last time status was UP
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("domains")
+}

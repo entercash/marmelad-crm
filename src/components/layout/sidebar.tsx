@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Globe2,
+  Globe,
   Receipt,
   Building2,
   CreditCard,
@@ -73,6 +74,7 @@ const navigation: NavGroup[] = [
       { label: "White Pages", href: "/white-pages", icon: FileCheck2 },
       { label: "Ad Accounts", href: "/ad-accounts", icon: CreditCard },
       { label: "Balances",    href: "/balances",    icon: Wallet },
+      { label: "Domains",     href: "/domains",     icon: Globe },
     ],
   },
   {

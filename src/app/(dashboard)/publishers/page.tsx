@@ -157,19 +157,18 @@ export default async function PublishersPage({
                     key={row.siteExternalId}
                     className="transition-colors hover:bg-white/[0.03]"
                   >
-                    <td className="max-w-[280px] px-4 py-3">
+                    <td className="max-w-[300px] px-4 py-3">
                       <div className="truncate font-medium text-white">
                         {row.siteName}
                       </div>
-                      <div className="flex items-center gap-2 truncate text-[11px] text-slate-500">
-                        <span className="tabular-nums">#{row.siteExternalId}</span>
-                        {row.siteUrl && (
-                          <>
-                            <span className="text-slate-600">&middot;</span>
-                            <span className="truncate">{row.siteUrl}</span>
-                          </>
-                        )}
+                      <div className="truncate text-[11px] tabular-nums text-slate-500">
+                        ID: {row.siteExternalId}
                       </div>
+                      {row.siteUrl && (
+                        <div className="truncate text-[11px] text-slate-500">
+                          {row.siteUrl}
+                        </div>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtNum(row.clicks)}

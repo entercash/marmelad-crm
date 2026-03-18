@@ -235,29 +235,10 @@ export class TaboolaClient {
   async getPublisherStatsDaily(
     params: TaboolaDateRangeParams,
   ): Promise<TaboolaPublisherStatsResponse> {
-    // Try dimensions that include country, fall back to basic site breakdown.
-    const dimensionsToTry = [
-      "campaign_site_country_day_breakdown",
-      "site_country_day_breakdown",
-      "campaign_site_day_breakdown", // fallback — no country
-    ];
-
-    for (const dim of dimensionsToTry) {
-      try {
-        const result = await this.get<TaboolaPublisherStatsResponse>(
-          `/reports/campaign-summary/dimensions/${dim}`,
-          { start_date: params.start_date, end_date: params.end_date },
-        );
-        console.log(`[taboola:client] Publisher stats dimension "${dim}" succeeded: ${result.results?.length ?? 0} rows`);
-        return result;
-      } catch (err) {
-        console.log(`[taboola:client] Publisher stats dimension "${dim}" failed:`, String(err).slice(0, 200));
-        // Try next dimension
-      }
-    }
-
-    // All failed — throw
-    throw new Error("All publisher stats dimensions failed");
+    return this.get<TaboolaPublisherStatsResponse>(
+      "/reports/campaign-summary/dimensions/campaign_site_day_breakdown",
+      { start_date: params.start_date, end_date: params.end_date },
+    );
   }
 }
 

@@ -439,6 +439,27 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
         }
         console.log(`[taboola:publishers] Campaign GEO map: ${campaignGeoMap.size} campaigns with country`);
 
+        // Clean up old geo="XX" rows for campaigns that now have a real GEO
+        // (prevents double-counting: old XX row + new GB row for same publisher×campaign×date)
+        if (campaignGeoMap.size > 0) {
+          const geoMappedCampaignIds = Array.from(campaignGeoMap.keys())
+            .map((extId) => campaignIdMap.get(extId))
+            .filter(Boolean) as string[];
+          if (geoMappedCampaignIds.length > 0) {
+            const deleted = await prisma.publisherStatsDaily.deleteMany({
+              where: {
+                campaignId: { in: geoMappedCampaignIds },
+                geo: "XX",
+                date: {
+                  gte: fromApiDate(startDate),
+                  lte: fromApiDate(endDate),
+                },
+              },
+            });
+            console.log(`[taboola:publishers] Cleaned up ${deleted.count} old geo=XX rows`);
+          }
+        }
+
         // Upsert publisher stats (filter to rows where campaign is known)
         const pubProcessable = pubResponse.results.filter(
           (row) => {

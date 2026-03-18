@@ -6,6 +6,7 @@
  *  - SSL:  tls.connect → cert expiry, issuer
  *  - DNS:  dns.resolve → resolves true/false
  *  - WHOIS: whois-json → domain expiry, registrar
+ *  - Google Safe Browsing: v4 Lookup API → malware/phishing/unwanted software
  *
  * Returns a result object ready to be written to the DB.
  */
@@ -25,6 +26,7 @@ export interface DomainCheckResult {
   dnsResolves: boolean | null;
   registrar: string | null;
   domainExpiry: Date | null;
+  safeBrowsing: string | null; // "SAFE", or threat type e.g. "MALWARE", "SOCIAL_ENGINEERING"
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,12 +154,86 @@ async function checkWhois(hostname: string): Promise<{
   }
 }
 
+// ─── Google Safe Browsing check ──────────────────────────────────────────────
+
+/**
+ * Checks a URL against Google Safe Browsing v4 Lookup API.
+ * Requires API key stored in integration settings as `google.safeBrowsingApiKey`.
+ * Returns: null if no API key, "SAFE" if clean, or threat type string if flagged.
+ */
+async function checkSafeBrowsing(url: string): Promise<string | null> {
+  try {
+    // Dynamic import to avoid pulling in Prisma on every check when not needed
+    const { getSetting } = await import("@/features/integration-settings/queries");
+    const apiKey = await getSetting("google.safeBrowsingApiKey");
+    if (!apiKey) return null; // No API key configured — skip
+
+    const endpoint = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${apiKey}`;
+
+    const body = {
+      client: {
+        clientId: "marmelad-crm",
+        clientVersion: "1.0.0",
+      },
+      threatInfo: {
+        threatTypes: [
+          "MALWARE",
+          "SOCIAL_ENGINEERING",
+          "UNWANTED_SOFTWARE",
+          "POTENTIALLY_HARMFUL_APPLICATION",
+        ],
+        platformTypes: ["ANY_PLATFORM"],
+        threatEntryTypes: ["URL"],
+        threatEntries: [{ url }],
+      },
+    };
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!res.ok) {
+      console.error(`[safe-browsing] API error: ${res.status} ${res.statusText}`);
+      return null;
+    }
+
+    const data = await res.json();
+
+    // Empty matches = safe
+    if (!data.matches || data.matches.length === 0) return "SAFE";
+
+    // Return the most severe threat type
+    const threats: string[] = data.matches.map(
+      (m: { threatType?: string }) => m.threatType ?? "UNKNOWN",
+    );
+
+    // Priority: MALWARE > SOCIAL_ENGINEERING > UNWANTED_SOFTWARE > other
+    const priority = [
+      "MALWARE",
+      "SOCIAL_ENGINEERING",
+      "UNWANTED_SOFTWARE",
+      "POTENTIALLY_HARMFUL_APPLICATION",
+    ];
+    for (const t of priority) {
+      if (threats.includes(t)) return t;
+    }
+    return threats[0];
+  } catch (err) {
+    console.error("[safe-browsing] Check failed:", err);
+    return null;
+  }
+}
+
 // ─── Status determination ────────────────────────────────────────────────────
 
 function determineStatus(result: {
   httpStatus: number | null;
   dnsResolves: boolean | null;
   sslExpiry: Date | null;
+  safeBrowsing: string | null;
 }): DomainStatus {
   // DNS failure
   if (result.dnsResolves === false) return "DNS_ERROR";
@@ -167,6 +243,14 @@ function determineStatus(result: {
 
   // SSL expired
   if (result.sslExpiry && result.sslExpiry < new Date()) return "SSL_ERROR";
+
+  // Google Safe Browsing flagged → BANNED
+  if (
+    result.safeBrowsing &&
+    result.safeBrowsing !== "SAFE"
+  ) {
+    return "BANNED";
+  }
 
   // Blocked / banned patterns
   if (result.httpStatus === 403 || result.httpStatus === 451) return "BANNED";
@@ -185,17 +269,20 @@ export async function checkDomain(url: string): Promise<DomainCheckResult> {
   const hostname = extractHostname(url);
 
   // Run all checks in parallel
-  const [httpResult, sslResult, dnsResult, whoisResult] = await Promise.all([
-    checkHttp(url),
-    checkSsl(hostname),
-    checkDns(hostname),
-    checkWhois(hostname),
-  ]);
+  const [httpResult, sslResult, dnsResult, whoisResult, safeBrowsingResult] =
+    await Promise.all([
+      checkHttp(url),
+      checkSsl(hostname),
+      checkDns(hostname),
+      checkWhois(hostname),
+      checkSafeBrowsing(url),
+    ]);
 
   const status = determineStatus({
     httpStatus: httpResult.httpStatus,
     dnsResolves: dnsResult,
     sslExpiry: sslResult.sslExpiry,
+    safeBrowsing: safeBrowsingResult,
   });
 
   return {
@@ -207,5 +294,6 @@ export async function checkDomain(url: string): Promise<DomainCheckResult> {
     dnsResolves: dnsResult,
     registrar: whoisResult.registrar,
     domainExpiry: whoisResult.domainExpiry,
+    safeBrowsing: safeBrowsingResult,
   };
 }

@@ -11,6 +11,8 @@ import {
   RefreshCw,
   Clock,
   Shield,
+  ShieldAlert,
+  ShieldCheck,
   Globe2,
   Server,
   Loader2,
@@ -155,6 +157,18 @@ export function DomainCard({ domain }: DomainCardProps) {
           }
           warn={domainDays !== null && domainDays <= 30}
         />
+        {domain.safeBrowsing && (
+          <InfoRow
+            icon={domain.safeBrowsing === "SAFE" ? ShieldCheck : ShieldAlert}
+            label="Safe Browsing"
+            value={
+              domain.safeBrowsing === "SAFE"
+                ? "Safe"
+                : domain.safeBrowsing.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase())
+            }
+            warn={domain.safeBrowsing !== "SAFE"}
+          />
+        )}
         {domain.registrar && (
           <InfoRow icon={Server} label="Registrar" value={domain.registrar} />
         )}

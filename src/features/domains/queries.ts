@@ -22,6 +22,7 @@ export type DomainRow = {
   dnsResolves: boolean | null;
   registrar: string | null;
   domainExpiry: Date | null;
+  safeBrowsing: string | null;
   lastCheckedAt: Date | null;
   lastUpAt: Date | null;
   notes: string | null;
@@ -68,6 +69,7 @@ export async function getDomains(): Promise<DomainRow[]> {
       dnsResolves: r.dnsResolves,
       registrar: r.registrar,
       domainExpiry: r.domainExpiry,
+      safeBrowsing: r.safeBrowsing,
       lastCheckedAt: r.lastCheckedAt,
       lastUpAt: r.lastUpAt,
       notes: r.notes,

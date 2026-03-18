@@ -1052,6 +1052,7 @@ model Domain {
   dnsResolves   Boolean?                         // Whether DNS resolves
   registrar     String?                          // Domain registrar (WHOIS)
   domainExpiry  DateTime?                        // Domain registration expiry (WHOIS)
+  safeBrowsing  String?                          // Google Safe Browsing: null=unchecked, "SAFE", or threat type
   lastCheckedAt DateTime?                        // Last health check timestamp
   lastUpAt      DateTime?                        // Last time status was UP
   notes         String?

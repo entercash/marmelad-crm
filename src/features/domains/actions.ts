@@ -175,6 +175,7 @@ export async function checkDomainNow(
       dnsResolves: result.dnsResolves,
       registrar: result.registrar,
       domainExpiry: result.domainExpiry,
+      safeBrowsing: result.safeBrowsing,
       lastCheckedAt: now,
       ...(result.status === "UP" ? { lastUpAt: now } : {}),
     },

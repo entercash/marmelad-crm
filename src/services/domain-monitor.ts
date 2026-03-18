@@ -135,6 +135,7 @@ export async function checkAllDomains(): Promise<number> {
           dnsResolves: result.dnsResolves,
           registrar: result.registrar,
           domainExpiry: result.domainExpiry,
+          safeBrowsing: result.safeBrowsing,
           lastCheckedAt: now,
           ...(result.status === "UP" ? { lastUpAt: now } : {}),
         },
@@ -172,6 +173,26 @@ export async function checkAllDomains(): Promise<number> {
             alertsSent++;
           }
         }
+      }
+
+      // ── Google Safe Browsing alert ───────────────────────────────────
+
+      if (result.safeBrowsing && result.safeBrowsing !== "SAFE") {
+        const sbKey = redis ? `telegram:alert:domain:${domain.id}:safe-browsing` : null;
+        const alreadySent = sbKey ? await redis!.get(sbKey) : null;
+        if (!alreadySent) {
+          const threatLabel = result.safeBrowsing.replace(/_/g, " ").toLowerCase();
+          const ok = await sendAlert(
+            `🛡 <b>Google Safe Browsing Alert</b>\n${domain.url}\nThreat: ${threatLabel}`,
+          );
+          if (ok && sbKey && redis) {
+            await redis.set(sbKey, "1"); // no TTL — fires once until cleared
+            alertsSent++;
+          }
+        }
+      } else if (result.safeBrowsing === "SAFE" && redis) {
+        // Clear Safe Browsing alert key on recovery
+        await redis.del(`telegram:alert:domain:${domain.id}:safe-browsing`);
       }
 
       // ── SSL expiry warning ────────────────────────────────────────────

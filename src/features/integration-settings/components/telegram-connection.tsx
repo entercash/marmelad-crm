@@ -20,13 +20,14 @@ import type { TestConnectionResult } from "../actions";
 export interface TelegramConnectionProps {
   botToken: string;
   chatId: string;
-  topicId: string;
+  leadsTopicId: string;
+  alertsTopicId: string;
   configured: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function TelegramConnection({ botToken, chatId, topicId, configured }: TelegramConnectionProps) {
+export function TelegramConnection({ botToken, chatId, leadsTopicId, alertsTopicId, configured }: TelegramConnectionProps) {
   const [saving, setSaving]       = useState(false);
   const [testing, setTesting]     = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -127,16 +128,30 @@ export function TelegramConnection({ botToken, chatId, topicId, configured }: Te
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="tg-topic-id">Topic ID (optional)</Label>
+          <Label htmlFor="tg-leads-topic-id">Leads Topic ID (optional)</Label>
           <Input
-            id="tg-topic-id"
-            name="topicId"
-            defaultValue={topicId}
+            id="tg-leads-topic-id"
+            name="leadsTopicId"
+            defaultValue={leadsTopicId}
             placeholder="123"
             className="max-w-lg"
           />
           <p className="text-xs text-slate-500">
-            Message thread ID for groups with topics enabled. Leave empty for general chat.
+            Topic for new lead notifications. Leave empty for general chat.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tg-alerts-topic-id">Alerts Topic ID (optional)</Label>
+          <Input
+            id="tg-alerts-topic-id"
+            name="alertsTopicId"
+            defaultValue={alertsTopicId}
+            placeholder="456"
+            className="max-w-lg"
+          />
+          <p className="text-xs text-slate-500">
+            Topic for system alerts (low balance, errors, etc.). Leave empty to disable.
           </p>
         </div>
 

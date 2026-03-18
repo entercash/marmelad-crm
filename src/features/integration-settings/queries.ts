@@ -240,17 +240,25 @@ export async function isAdspectConfigured(): Promise<boolean> {
 export interface TelegramSettingsData {
   botToken: string | null;
   chatId: string | null;
-  topicId: string | null;
+  leadsTopicId: string | null;
+  alertsTopicId: string | null;
 }
 
 /** Load Telegram bot settings from DB. */
 export async function getTelegramSettings(): Promise<TelegramSettingsData> {
-  const [botToken, chatId, topicId] = await Promise.all([
+  const [botToken, chatId, leadsTopicId, alertsTopicId, legacyTopicId] = await Promise.all([
     getSetting("telegram.botToken"),
     getSetting("telegram.chatId"),
-    getSetting("telegram.topicId"),
+    getSetting("telegram.topicId.leads"),
+    getSetting("telegram.topicId.alerts"),
+    getSetting("telegram.topicId"), // fallback from old single-topic config
   ]);
-  return { botToken, chatId, topicId };
+  return {
+    botToken,
+    chatId,
+    leadsTopicId: leadsTopicId || legacyTopicId,
+    alertsTopicId,
+  };
 }
 
 /** Check if Telegram is configured (bot token and chat ID present). */

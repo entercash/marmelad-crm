@@ -172,7 +172,7 @@ export async function notifyNewLeads(): Promise<number> {
     const result = await sendTelegramMessage({
       botToken: tgSettings.botToken,
       chatId: tgSettings.chatId,
-      topicId: tgSettings.topicId,
+      topicId: tgSettings.leadsTopicId,
       text: lines.join("\n"),
     });
 

@@ -325,21 +325,29 @@ export async function saveTelegramSettings(
 
   const botToken = (formData.get("botToken") as string)?.trim();
   const chatId = (formData.get("chatId") as string)?.trim();
-  const topicId = (formData.get("topicId") as string)?.trim() || "";
+  const leadsTopicId = (formData.get("leadsTopicId") as string)?.trim() || "";
+  const alertsTopicId = (formData.get("alertsTopicId") as string)?.trim() || "";
 
   if (!botToken) return { success: false, error: "Bot Token is required" };
   if (!chatId) return { success: false, error: "Chat ID is required" };
 
   await setSetting("telegram.botToken", botToken);
   await setSetting("telegram.chatId", chatId);
-  if (topicId) {
-    await setSetting("telegram.topicId", topicId);
-  } else {
-    // Clear topic if empty
-    await prisma.integrationSetting.deleteMany({
-      where: { key: "telegram.topicId" },
-    });
+
+  // Save or clear topic IDs per category
+  for (const [key, val] of [
+    ["telegram.topicId.leads", leadsTopicId],
+    ["telegram.topicId.alerts", alertsTopicId],
+  ] as const) {
+    if (val) {
+      await setSetting(key, val);
+    } else {
+      await prisma.integrationSetting.deleteMany({ where: { key } });
+    }
   }
+
+  // Remove legacy single topicId if it exists
+  await prisma.integrationSetting.deleteMany({ where: { key: "telegram.topicId" } });
 
   revalidatePath("/settings");
   return { success: true };
@@ -356,18 +364,30 @@ export async function testTelegramConnection(): Promise<TestConnectionResult> {
     return { success: false, error: "Telegram is not configured. Save Bot Token and Chat ID first." };
   }
 
-  const result = await sendTelegramMessage({
-    botToken: settings.botToken,
-    chatId: settings.chatId,
-    topicId: settings.topicId,
-    text: "✅ Marmelad CRM — Telegram connection test successful!",
-  });
+  // Send test to each configured topic
+  const topics = [
+    { label: "Leads", topicId: settings.leadsTopicId },
+    { label: "Alerts", topicId: settings.alertsTopicId },
+  ].filter((t) => t.topicId);
 
-  if (!result.ok) {
-    return { success: false, error: result.error ?? "Failed to send message" };
+  // If no topics configured, send to general chat
+  if (topics.length === 0) {
+    topics.push({ label: "General", topicId: null });
   }
 
-  return { success: true, campaignCount: 1 };
+  for (const t of topics) {
+    const result = await sendTelegramMessage({
+      botToken: settings.botToken,
+      chatId: settings.chatId,
+      topicId: t.topicId,
+      text: `✅ Marmelad CRM — ${t.label} topic test successful!`,
+    });
+    if (!result.ok) {
+      return { success: false, error: `${t.label}: ${result.error ?? "Failed to send message"}` };
+    }
+  }
+
+  return { success: true, campaignCount: topics.length };
 }
 
 // ─── Disconnect Telegram ───────────────────────────────────────────────────

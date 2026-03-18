@@ -74,7 +74,8 @@ export default async function SettingsPage() {
         telegram={{
           botToken: telegramSettings.botToken ?? "",
           chatId: telegramSettings.chatId ?? "",
-          topicId: telegramSettings.topicId ?? "",
+          leadsTopicId: telegramSettings.leadsTopicId ?? "",
+          alertsTopicId: telegramSettings.alertsTopicId ?? "",
           configured: !!(telegramSettings.botToken && telegramSettings.chatId),
         }}
       />

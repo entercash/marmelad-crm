@@ -377,19 +377,21 @@ export async function getDashboardAlerts(): Promise<DashboardAlert[]> {
   const alerts: DashboardAlert[] = [];
 
   try {
-    // 1. Low balance accounts (< $1000)
+    // 1. Low balance accounts (< $3000 warning, < $1000 critical)
     const balances = await getBalanceSummaries();
     for (const b of balances) {
       // Only alert for accounts that have had activity
-      if ((b.totalTopUp > 0 || b.totalSpent > 0) && b.remaining < 1000) {
-        const severity = b.remaining < 200 ? "critical" : "warning";
+      if ((b.totalTopUp > 0 || b.totalSpent > 0) && b.remaining < 3000) {
+        const severity = b.remaining < 1000 ? "critical" : "warning";
         alerts.push({
           type: "low_balance",
           severity,
           title: `${b.accountName}: $${Math.round(b.remaining).toLocaleString()}`,
           description: b.remaining < 0
             ? `Overdraft — spent $${Math.round(b.totalSpent).toLocaleString()} of $${Math.round(b.totalTopUp).toLocaleString()}`
-            : `Balance low — refill needed`,
+            : b.remaining < 1000
+              ? `Critical balance — refill urgently`
+              : `Balance low — refill needed`,
         });
       }
     }

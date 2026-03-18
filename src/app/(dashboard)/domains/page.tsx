@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
-import { Plus, Globe2, ArrowUp, ArrowDown, Shield, Clock } from "lucide-react";
+import { Plus, Upload, Globe2, ArrowUp, ArrowDown, Shield } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { DomainDialog } from "@/features/domains/components/domain-dialog";
+import { BulkImportDialog } from "@/features/domains/components/bulk-import-dialog";
 import { DomainFilters } from "@/features/domains/components/domain-filters";
 import { getDomains, getDomainStats } from "@/features/domains/queries";
 import { Button } from "@/components/ui/button";
@@ -19,14 +20,24 @@ export default async function DomainsPage() {
         title="Domain Monitor"
         description="Track domain availability, SSL certificates, and DNS health"
         action={
-          <DomainDialog
-            trigger={
-              <Button size="sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add Domain
-              </Button>
-            }
-          />
+          <div className="flex items-center gap-2">
+            <BulkImportDialog
+              trigger={
+                <Button size="sm" variant="outline">
+                  <Upload className="mr-1.5 h-4 w-4" />
+                  Bulk Import
+                </Button>
+              }
+            />
+            <DomainDialog
+              trigger={
+                <Button size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add Domain
+                </Button>
+              }
+            />
+          </div>
         }
       />
 

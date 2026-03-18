@@ -65,10 +65,10 @@ async function registerSchedulers(): Promise<void> {
     { name: "keitaro:conversion-stats-daily", data: { type: "keitaro:conversion-stats-daily" as const, startDate: "AUTO_FULL", endDate: "AUTO_FULL" } },
   );
 
-  // ── Domain health check: every 15 min ──
+  // ── Domain health check: every 10 min ──
   await syncQueue.upsertJobScheduler(
     "domain-check",
-    { every: 15 * 60 * 1000 },
+    { every: 10 * 60 * 1000 },
     { name: "domain:check-all", data: { type: "domain:check-all" as const } },
   );
 

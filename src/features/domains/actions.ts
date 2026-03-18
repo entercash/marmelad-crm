@@ -87,6 +87,57 @@ export async function updateDomain(
   return { success: true };
 }
 
+// ─── Bulk Import Domains ────────────────────────────────────────────────────
+
+export type BulkImportResult = {
+  success: true;
+  added: number;
+  skipped: number;
+  errors: string[];
+};
+
+export async function bulkImportDomains(
+  urls: string[],
+): Promise<BulkImportResult | ActionResult> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  let added = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const rawUrl of urls) {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) continue;
+
+    // Normalize: add https:// if missing
+    const url = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+    // Basic URL validation
+    try {
+      new URL(url);
+    } catch {
+      errors.push(`Invalid URL: ${trimmed}`);
+      continue;
+    }
+
+    // Skip duplicates
+    const existing = await prisma.domain.findUnique({ where: { url } });
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    await prisma.domain.create({
+      data: { url },
+    });
+    added++;
+  }
+
+  revalidatePath("/domains");
+  return { success: true, added, skipped, errors };
+}
+
 // ─── Delete Domain ──────────────────────────────────────────────────────────
 
 export async function deleteDomain(id: string): Promise<ActionResult> {

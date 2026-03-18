@@ -138,7 +138,7 @@ export default async function PublishersPage({
                   <th className="px-4 py-3">Site</th>
                   <th className="px-4 py-3 text-right">Clicks</th>
                   <th className="px-4 py-3 text-right">Bot%</th>
-                  <th className="px-4 py-3 text-right">ΔClicks</th>
+                  <th className="px-4 py-3 text-right">ΔClicks%</th>
                   <th className="px-4 py-3 text-right">Impressions</th>
                   <th className="px-4 py-3 text-right">Spend</th>
                   <th className="px-4 py-3 text-right">CPC</th>
@@ -188,8 +188,20 @@ export default async function PublishersPage({
                         {row.botPercent !== null ? `${row.botPercent.toFixed(1)}%` : "—"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
-                      {row.clickDiscrepancy !== null ? fmtNum(row.clickDiscrepancy) : "—"}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      <span
+                        className={
+                          row.clickDiscrepancy === null
+                            ? "text-slate-500"
+                            : row.clickDiscrepancy <= 20
+                              ? "text-emerald-400"
+                              : row.clickDiscrepancy <= 50
+                                ? "text-amber-400"
+                                : "text-red-400"
+                        }
+                      >
+                        {row.clickDiscrepancy !== null ? `${row.clickDiscrepancy.toFixed(1)}%` : "—"}
+                      </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-300">
                       {fmtNum(row.impressions)}

@@ -555,7 +555,10 @@ export async function getPublisherStats(params: {
       adspect = adspectStats.get(r.siteUrl) ?? null;
     }
     const botPercent = adspect?.botPercent ?? null;
-    const clickDiscrepancy = adspect ? clicks - adspect.adspectClicks : null;
+    // Click discrepancy as % — how many Taboola clicks didn't reach Adspect
+    const clickDiscrepancy = adspect && clicks > 0
+      ? Math.round(((clicks - adspect.adspectClicks) / clicks) * 1000) / 10
+      : null;
 
     return {
       siteExternalId: r.siteExternalId,

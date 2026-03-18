@@ -163,13 +163,25 @@ async function getSiteCampaignAssociations(
   return map;
 }
 
-// ─── Keitaro stats by site (exact matching via sub_id = site_id) ────────────
+// ─── Keitaro stats by site (exact matching via sub_id_4 = site_id) ──────────
 
 type KeitaroSiteStats = { leads: number; revenue: number };
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id.
- * sub_id contains the Taboola site_id (passed via src_id={site_id} in tracking URL).
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_4.
+ * sub_id_4 contains the Taboola site_id (passed via src_id={site_id} in tracking URL).
+ *
+ * Keitaro sub_id mapping (positional, matches UTM builder):
+ *   sub_id_1 = camp      = {campaign_id}
+ *   sub_id_2 = cont      = {campaign_item_id}
+ *   sub_id_3 = utm_source = {site}        (publisher name)
+ *   sub_id_4 = src_id    = {site_id}      (publisher numeric ID) ← THIS
+ *   sub_id_5 = utm_medium = {platform}
+ *   sub_id_6 = geo       = {country}
+ *   sub_id_7 = click_id  = {click_id}
+ *   sub_id_8 = network_id = {account_id}
+ *   sub_id_9 = headline  = {title}
+ *   sub_id_10 = utm_term = {campaign_name}
  *
  * Returns a Map keyed by siteExternalId → { leads, revenue }.
  * Multiple campaigns are aggregated per site.
@@ -194,29 +206,24 @@ async function getKeitaroStatsBySite(
     const from = dateFrom ?? "2024-01-01";
     const to = dateTo ?? todayCrm();
 
-    // Group by campaign_id + sub_id to get exact per-site stats.
-    // sub_id = Taboola site_id (passed via src_id={site_id} in tracking URL).
+    // Group by campaign_id + sub_id_4 to get exact per-site stats.
+    // sub_id_4 = Taboola site_id (passed via src_id={site_id} in tracking URL).
     const report = await client.buildReport({
       range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id"],
+      grouping: ["campaign_id", "sub_id_4"],
       metrics: ["conversions", "revenue"],
       limit: 100_000,
       offset: 0,
     });
 
     const idSet = new Set(keitaroExternalIds);
-    // Build link lookup: keitaroCampaignId → link info (for CPL rate)
-    const linkByKeitaro = new Map<number, CampaignLinkInfo>();
-    for (const link of links) {
-      linkByKeitaro.set(link.keitaroCampaignExternalId, link);
-    }
 
     const map = new Map<string, KeitaroSiteStats>();
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
 
-      const siteId = String(row.sub_id ?? "").trim();
+      const siteId = String(row.sub_id_4 ?? "").trim();
       if (!siteId) continue;
 
       const leads = Number(row.conversions ?? 0);
@@ -605,10 +612,11 @@ export async function getPublisherDailyTrends(
       if (keitaroIds.length > 0) {
         const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
 
-        // Group by day + sub_id for exact per-site daily stats
+        // Group by day + sub_id_4 for exact per-site daily stats
+        // sub_id_4 = src_id = {site_id} (Taboola publisher numeric ID)
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-          grouping: ["day", "campaign_id", "sub_id"],
+          grouping: ["day", "campaign_id", "sub_id_4"],
           metrics: ["conversions", "revenue"],
           limit: 100_000,
           offset: 0,
@@ -616,8 +624,6 @@ export async function getPublisherDailyTrends(
 
         const idSet = new Set(keitaroIds);
         // Find a CPL rate from any linked campaign (for revenue calculation)
-        const linkByCampaign = new Map(links.map((l) => [l.taboolaCampaignExternalId, l]));
-        // Find any CPL rate from links for revenue calculation
         let defaultCplRate: number | null = null;
         let defaultPaymentModel = "CPL";
         for (const l of links) {
@@ -634,7 +640,7 @@ export async function getPublisherDailyTrends(
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
-          const siteId = String(row.sub_id ?? "").trim();
+          const siteId = String(row.sub_id_4 ?? "").trim();
           if (!campId || !day || !siteId || !idSet.has(campId)) continue;
 
           const leads = Number(row.conversions ?? 0);

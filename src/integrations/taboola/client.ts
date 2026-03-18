@@ -235,10 +235,20 @@ export class TaboolaClient {
   async getPublisherStatsDaily(
     params: TaboolaDateRangeParams,
   ): Promise<TaboolaPublisherStatsResponse> {
-    return this.get<TaboolaPublisherStatsResponse>(
-      "/reports/campaign-summary/dimensions/campaign_site_day_breakdown",
-      { start_date: params.start_date, end_date: params.end_date },
-    );
+    // Use geo_site_day_breakdown to get country per publisher row.
+    // Falls back to campaign_site_day_breakdown if geo dimension fails.
+    try {
+      return await this.get<TaboolaPublisherStatsResponse>(
+        "/reports/campaign-summary/dimensions/geo_site_day_breakdown",
+        { start_date: params.start_date, end_date: params.end_date },
+      );
+    } catch {
+      // Fallback: dimension without country
+      return this.get<TaboolaPublisherStatsResponse>(
+        "/reports/campaign-summary/dimensions/campaign_site_day_breakdown",
+        { start_date: params.start_date, end_date: params.end_date },
+      );
+    }
   }
 }
 

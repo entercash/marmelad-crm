@@ -426,7 +426,8 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
               const publisherId = publisherIdMap.get(dyn(row, "site", "site_id", "publisher")!)!;
               const campaignId = campaignIdMap.get(dyn(row, "campaign_id", "campaign")!)!;
               const date = fromApiDate(extractDate(row.date));
-              const geo = row.country && /^[A-Z]{2}$/.test(row.country) ? row.country : "XX";
+              const rawGeo = dyn(row, "country", "country_code", "geo") ?? "";
+              const geo = /^[A-Z]{2}$/.test(rawGeo) ? rawGeo : "XX";
               const spentUsd = toUsdNum(row.spent ?? 0, accountCurrency);
 
               return prisma.publisherStatsDaily.upsert({

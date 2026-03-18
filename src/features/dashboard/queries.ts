@@ -152,8 +152,13 @@ export async function getDashboardSummary(
     const result   = received - spent;
     const roi      = spent > 0 ? ((received - spent) / spent) * 100 : null;
 
-    // Conversions & CPA
-    const conversions = Number(revenueAgg._sum.conversions ?? 0);
+    // Conversions & CPA — combine ConversionStatsDaily + Keitaro API leads
+    const dbConversions = Number(revenueAgg._sum.conversions ?? 0);
+    const apiLeads = campaignStats.reduce(
+      (sum, s) => sum + (s.leads ?? 0),
+      0,
+    );
+    const conversions = dbConversions + apiLeads;
     const cpa = conversions > 0 ? spent / conversions : null;
 
     return { spent, received, roi, result, conversions, cpa };

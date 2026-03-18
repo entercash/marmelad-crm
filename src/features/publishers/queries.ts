@@ -163,13 +163,23 @@ async function getSiteCampaignAssociations(
   return map;
 }
 
-// ─── Keitaro stats by campaign (campaign-level) ─────────────────────────────
+// ─── Keitaro stats by site (exact matching via sub_id = site_id) ────────────
 
-async function getKeitaroStatsByCampaign(
+type KeitaroSiteStats = { leads: number; revenue: number };
+
+/**
+ * Fetch Keitaro stats grouped by campaign_id + sub_id.
+ * sub_id contains the Taboola site_id (passed via src_id={site_id} in tracking URL).
+ *
+ * Returns a Map keyed by siteExternalId → { leads, revenue }.
+ * Multiple campaigns are aggregated per site.
+ */
+async function getKeitaroStatsBySite(
   keitaroExternalIds: number[],
+  links: CampaignLinkInfo[],
   dateFrom?: string,
   dateTo?: string,
-): Promise<Map<number, { leads: number; revenue: number }> | null> {
+): Promise<Map<string, KeitaroSiteStats> | null> {
   if (keitaroExternalIds.length === 0) return new Map();
 
   try {
@@ -184,27 +194,45 @@ async function getKeitaroStatsByCampaign(
     const from = dateFrom ?? "2024-01-01";
     const to = dateTo ?? todayCrm();
 
+    // Group by campaign_id + sub_id to get exact per-site stats.
+    // sub_id = Taboola site_id (passed via src_id={site_id} in tracking URL).
     const report = await client.buildReport({
       range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id"],
+      grouping: ["campaign_id", "sub_id"],
       metrics: ["conversions", "revenue"],
-      limit: 10_000,
+      limit: 100_000,
       offset: 0,
     });
 
     const idSet = new Set(keitaroExternalIds);
-    const map = new Map<number, { leads: number; revenue: number }>();
+    // Build link lookup: keitaroCampaignId → link info (for CPL rate)
+    const linkByKeitaro = new Map<number, CampaignLinkInfo>();
+    for (const link of links) {
+      linkByKeitaro.set(link.keitaroCampaignExternalId, link);
+    }
+
+    const map = new Map<string, KeitaroSiteStats>();
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
       if (!campId || !idSet.has(campId)) continue;
-      map.set(campId, {
-        leads: Number(row.conversions ?? 0),
-        revenue: Number(row.revenue ?? 0),
-      });
+
+      const siteId = String(row.sub_id ?? "").trim();
+      if (!siteId) continue;
+
+      const leads = Number(row.conversions ?? 0);
+      const revenue = Number(row.revenue ?? 0);
+
+      const existing = map.get(siteId);
+      if (existing) {
+        existing.leads += leads;
+        existing.revenue += revenue;
+      } else {
+        map.set(siteId, { leads, revenue });
+      }
     }
     return map;
   } catch (err) {
-    console.error("[getKeitaroStatsByCampaign] Keitaro API error:", err);
+    console.error("[getKeitaroStatsBySite] Keitaro API error:", err);
     return null;
   }
 }
@@ -433,27 +461,16 @@ export async function getPublisherStats(params: {
   const siteIds = rawRows.map((r) => r.siteExternalId);
   const siteCampaigns = await getSiteCampaignAssociations(siteIds, country, dateFrom, dateTo);
 
-  // 5. Keitaro + click distribution + Adspect
+  // 5. Keitaro exact matching by site_id (sub_id) + Adspect
   const keitaroExternalIds = Array.from(new Set(links.map((l) => l.keitaroCampaignExternalId)));
-  const linkedTaboolaCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
 
-  const [keitaroStats, campaignClickTotals, siteCampaignClickMap, adspectStats] =
+  const [keitaroSiteStats, adspectStats] =
     await Promise.all([
-      getKeitaroStatsByCampaign(keitaroExternalIds, dateFrom, dateTo),
-      getCampaignClickTotals(linkedTaboolaCampaignIds, dateFrom, dateTo),
-      getSiteCampaignClicks(siteIds, linkedTaboolaCampaignIds, dateFrom, dateTo),
+      getKeitaroStatsBySite(keitaroExternalIds, links, dateFrom, dateTo),
       getAdspectStatsBySite(siteIds, dateFrom, dateTo),
     ]);
 
-  // Keitaro campaign total clicks (denominator for proportional share)
-  const keitaroCampaignTotalClicks = new Map<number, number>();
-  for (const link of links) {
-    const kid = link.keitaroCampaignExternalId;
-    const tc = campaignClickTotals.get(link.taboolaCampaignExternalId) ?? 0;
-    keitaroCampaignTotalClicks.set(kid, (keitaroCampaignTotalClicks.get(kid) ?? 0) + tc);
-  }
-
-  // 6. Merge Taboola + Keitaro + Adspect
+  // 6. Merge Taboola + Keitaro (exact site match) + Adspect
   const rows: PublisherStatsRow[] = rawRows.map((r) => {
     const clicks = Number(r.clicks);
     const impressions = Number(r.impressions);
@@ -461,33 +478,28 @@ export async function getPublisherStats(params: {
     const cpc = clicks > 0 ? spend / clicks : null;
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : null;
 
-    let totalLeads = 0;
-    let totalRevenue = 0;
-    let hasKeitaroData = false;
+    // Exact match: Keitaro sub_id = Taboola site external ID
+    const ks = keitaroSiteStats?.get(r.siteExternalId) ?? null;
 
-    const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
-    for (const campaignExternalId of campaigns) {
-      const link = linkByTaboolaCampaign.get(campaignExternalId);
-      if (!link) continue;
+    let leads: number | null = null;
+    let revenue: number | null = null;
 
-      const ks = keitaroStats?.get(link.keitaroCampaignExternalId);
-      if (!ks) continue;
-      hasKeitaroData = true;
-
-      const siteClicks = siteCampaignClickMap.get(`${r.siteExternalId}_${campaignExternalId}`) ?? 0;
-      const totalClicks = keitaroCampaignTotalClicks.get(link.keitaroCampaignExternalId) ?? 0;
-      const share = totalClicks > 0 ? siteClicks / totalClicks : 0;
-
-      totalLeads += ks.leads * share;
-      if (link.paymentModel === "CPL" && link.cplRate !== null) {
-        totalRevenue += ks.leads * share * link.cplRate;
-      } else if (link.paymentModel === "CPA") {
-        totalRevenue += ks.revenue * share;
+    if (ks) {
+      leads = ks.leads;
+      // Calculate revenue based on payment model of linked campaigns
+      const campaigns = siteCampaigns.get(r.siteExternalId) ?? [];
+      let totalRevenue = 0;
+      for (const campaignExternalId of campaigns) {
+        const link = linkByTaboolaCampaign.get(campaignExternalId);
+        if (!link) continue;
+        if (link.paymentModel === "CPL" && link.cplRate !== null) {
+          totalRevenue = ks.leads * link.cplRate;
+        } else if (link.paymentModel === "CPA") {
+          totalRevenue = ks.revenue;
+        }
       }
+      revenue = totalRevenue;
     }
-
-    const leads = hasKeitaroData ? totalLeads : null;
-    const revenue = hasKeitaroData ? totalRevenue : null;
     const profit = revenue !== null ? revenue - spend : null;
     const roi = revenue !== null && spend > 0 ? ((revenue - spend) / spend) * 100 : null;
 
@@ -574,7 +586,7 @@ export async function getPublisherDailyTrends(
     spendByDay.get(siteId)!.set(day, { spend: Number(r.spend), clicks: Number(r.clicks) });
   }
 
-  // 2. Keitaro daily revenue per site (distributed by clicks)
+  // 2. Keitaro daily revenue per site (exact matching via sub_id = site_id)
   const revenueByDay = new Map<string, Map<string, { leads: number; revenue: number }>>();
 
   try {
@@ -592,75 +604,56 @@ export async function getPublisherDailyTrends(
       const keitaroIds = Array.from(new Set(links.map((l) => l.keitaroCampaign.externalId)));
       if (keitaroIds.length > 0) {
         const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
+
+        // Group by day + sub_id for exact per-site daily stats
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-          grouping: ["day", "campaign_id"],
+          grouping: ["day", "campaign_id", "sub_id"],
           metrics: ["conversions", "revenue"],
-          limit: 50_000,
+          limit: 100_000,
           offset: 0,
         });
 
-        const keitaroDailyByCampaign = new Map<number, Map<string, { leads: number; revenue: number }>>();
         const idSet = new Set(keitaroIds);
+        // Find a CPL rate from any linked campaign (for revenue calculation)
+        const linkByCampaign = new Map(links.map((l) => [l.taboolaCampaignExternalId, l]));
+        // Find any CPL rate from links for revenue calculation
+        let defaultCplRate: number | null = null;
+        let defaultPaymentModel = "CPL";
+        for (const l of links) {
+          if (l.paymentModel === "CPL" && l.cplRate) {
+            defaultCplRate = Number(l.cplRate);
+            defaultPaymentModel = "CPL";
+            break;
+          } else if (l.paymentModel === "CPA") {
+            defaultPaymentModel = "CPA";
+            break;
+          }
+        }
+
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
-          if (!campId || !day || !idSet.has(campId)) continue;
-          if (!keitaroDailyByCampaign.has(campId)) keitaroDailyByCampaign.set(campId, new Map());
-          keitaroDailyByCampaign.get(campId)!.set(day, {
-            leads: Number(row.conversions ?? 0),
-            revenue: Number(row.revenue ?? 0),
-          });
-        }
+          const siteId = String(row.sub_id ?? "").trim();
+          if (!campId || !day || !siteId || !idSet.has(campId)) continue;
 
-        const linkedTaboolaCampaignIds = Array.from(new Set(links.map((l) => l.taboolaCampaignExternalId)));
-        const [campClickTotals, siteCampClicks] = await Promise.all([
-          getCampaignClickTotals(linkedTaboolaCampaignIds, dateFrom, dateTo),
-          getSiteCampaignClicks(siteExternalIds, linkedTaboolaCampaignIds, dateFrom, dateTo),
-        ]);
+          const leads = Number(row.conversions ?? 0);
+          const rawRevenue = Number(row.revenue ?? 0);
 
-        const keitaroCampTotalClicks = new Map<number, number>();
-        for (const l of links) {
-          const kid = l.keitaroCampaign.externalId;
-          const tc = campClickTotals.get(l.taboolaCampaignExternalId) ?? 0;
-          keitaroCampTotalClicks.set(kid, (keitaroCampTotalClicks.get(kid) ?? 0) + tc);
-        }
-
-        const linkByCampaign = new Map(links.map((l) => [l.taboolaCampaignExternalId, l]));
-        const siteCampaigns = await getSiteCampaignAssociations(siteExternalIds, undefined, dateFrom, dateTo);
-
-        for (const siteId of siteExternalIds) {
-          const campaigns = siteCampaigns.get(siteId) ?? [];
-          for (const campaignExternalId of campaigns) {
-            const link = linkByCampaign.get(campaignExternalId);
-            if (!link) continue;
-
-            const kid = link.keitaroCampaign.externalId;
-            const dailyMap = keitaroDailyByCampaign.get(kid);
-            if (!dailyMap) continue;
-
-            const siteClicks = siteCampClicks.get(`${siteId}_${campaignExternalId}`) ?? 0;
-            const totalClicks = keitaroCampTotalClicks.get(kid) ?? 0;
-            const share = totalClicks > 0 ? siteClicks / totalClicks : 0;
-            if (share === 0) continue;
-
-            if (!revenueByDay.has(siteId)) revenueByDay.set(siteId, new Map());
-            const siteDayMap = revenueByDay.get(siteId)!;
-
-            for (const [day, data] of Array.from(dailyMap.entries())) {
-              let rev = 0;
-              if (link.paymentModel === "CPL" && link.cplRate) {
-                rev = data.leads * share * Number(link.cplRate);
-              } else if (link.paymentModel === "CPA") {
-                rev = data.revenue * share;
-              }
-              const existing = siteDayMap.get(day) ?? { leads: 0, revenue: 0 };
-              siteDayMap.set(day, {
-                leads: existing.leads + data.leads * share,
-                revenue: existing.revenue + rev,
-              });
-            }
+          let rev = 0;
+          if (defaultPaymentModel === "CPL" && defaultCplRate !== null) {
+            rev = leads * defaultCplRate;
+          } else if (defaultPaymentModel === "CPA") {
+            rev = rawRevenue;
           }
+
+          if (!revenueByDay.has(siteId)) revenueByDay.set(siteId, new Map());
+          const siteDayMap = revenueByDay.get(siteId)!;
+          const existing = siteDayMap.get(day) ?? { leads: 0, revenue: 0 };
+          siteDayMap.set(day, {
+            leads: existing.leads + leads,
+            revenue: existing.revenue + rev,
+          });
         }
       }
     }

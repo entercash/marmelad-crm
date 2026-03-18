@@ -226,17 +226,30 @@ async function getKeitaroStatsBySite(
     });
 
     const idSet = new Set(keitaroExternalIds);
+    console.log(`[getKeitaroStatsBySite] keitaroIds: [${Array.from(idSet).join(",")}], report rows: ${report.rows.length}`);
+
+    // Debug first row
+    if (report.rows.length > 0) {
+      const sample = report.rows[0];
+      console.log(`[getKeitaroStatsBySite] FIRST ROW:`, JSON.stringify(sample));
+    }
 
     const map = new Map<string, KeitaroSiteStats>();
+    let matched = 0;
+    let unmatched = 0;
     for (const row of report.rows) {
       const campId = Number(row.campaign_id);
-      if (!campId || !idSet.has(campId)) continue;
+      if (!campId || !idSet.has(campId)) {
+        unmatched++;
+        continue;
+      }
 
       const siteId = String(row.sub_id_4 ?? "").trim();
       if (!siteId) continue;
 
       const leads = Number(row.conversions ?? 0);
       const revenue = Number(row.revenue ?? 0);
+      matched++;
 
       const existing = map.get(siteId);
       if (existing) {
@@ -246,6 +259,7 @@ async function getKeitaroStatsBySite(
         map.set(siteId, { leads, revenue });
       }
     }
+    console.log(`[getKeitaroStatsBySite] matched=${matched} unmatched=${unmatched} sites=${map.size}, top5:`, Array.from(map.entries()).slice(0, 5).map(([k, v]) => `${k}:${v.leads}L`));
     return map;
   } catch (err) {
     console.error("[getKeitaroStatsBySite] Keitaro API error:", err);

@@ -161,8 +161,8 @@ export default async function PublishersPage({
                       <div className="truncate font-medium text-white">
                         {row.siteName}
                       </div>
-                      <div className="truncate text-[11px] tabular-nums text-slate-500">
-                        {row.siteNumericId ? `#${row.siteNumericId}` : row.siteExternalId}
+                      <div className="truncate text-[11px] text-slate-500">
+                        {row.siteNumericId ? `#${row.siteNumericId} · ` : ""}{row.siteExternalId}
                       </div>
                       {row.siteUrl && (
                         <div className="truncate text-[11px] text-slate-500">

@@ -14,7 +14,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
-import { ACCT_MULT_CTE } from "@/lib/spend-queries";
+import { ACCT_MULT_CTE, FX_TO_USD_PSD } from "@/lib/spend-queries";
 import { CRM_TIMEZONE, todayCrm, toApiDate } from "@/lib/date";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -512,7 +512,7 @@ export async function getPublisherStats(params: {
         p."domain" as "siteUrl",
         COALESCE(SUM(psd."clicks"), 0) as "clicks",
         COALESCE(SUM(psd."impressions"), 0) as "impressions",
-        COALESCE(SUM(psd."spend" * COALESCE(am.multiplier, 1)), 0) as "spend"
+        COALESCE(SUM(psd."spend" / ${FX_TO_USD_PSD} * COALESCE(am.multiplier, 1)), 0) as "spend"
       FROM "publisher_stats_daily" psd
       JOIN "publishers" p ON p."id" = psd."publisherId"
       JOIN "campaigns" c ON c."id" = psd."campaignId"
@@ -520,7 +520,7 @@ export async function getPublisherStats(params: {
       LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
       ${whereClause}
       GROUP BY p."externalId", p."numericId", p."name", p."domain"
-      ORDER BY SUM(psd."spend" * COALESCE(am.multiplier, 1)) DESC
+      ORDER BY SUM(psd."spend" / ${FX_TO_USD_PSD} * COALESCE(am.multiplier, 1)) DESC
       LIMIT ${perPage} OFFSET ${offset}
     `,
   );
@@ -653,7 +653,7 @@ export async function getPublisherDailyTrends(
         psd."date",
         p."externalId" as "siteExternalId",
         COALESCE(SUM(psd."clicks"), 0) as "clicks",
-        COALESCE(SUM(psd."spend" * COALESCE(am.multiplier, 1)), 0) as "spend"
+        COALESCE(SUM(psd."spend" / ${FX_TO_USD_PSD} * COALESCE(am.multiplier, 1)), 0) as "spend"
       FROM "publisher_stats_daily" psd
       JOIN "publishers" p ON p."id" = psd."publisherId"
       JOIN "campaigns" c ON c."id" = psd."campaignId"

@@ -51,8 +51,13 @@ export const ACCT_MULT_SUB_CTE = Prisma.sql`acct_mult AS (${ACCT_MULT_BODY})`;
  * Hardcoded fallback rates — close enough for performance marketing P&L.
  * Rates are "units of foreign currency per 1 USD" (divide to get USD).
  */
-export const FX_TO_USD_CASE = Prisma.sql`
-  CASE csd."currency"
+/**
+ * Build a SQL CASE that converts spend from native currency to USD.
+ * @param alias - table alias (e.g. "csd", "psd")
+ */
+function fxCase(alias: string) {
+  return Prisma.sql`
+  CASE ${Prisma.raw(`${alias}."currency"`)}
     WHEN 'USD' THEN 1.0
     WHEN 'HKD' THEN 7.80
     WHEN 'EUR' THEN 0.92
@@ -63,3 +68,10 @@ export const FX_TO_USD_CASE = Prisma.sql`
     ELSE 1.0
   END
 `;
+}
+
+/** FX divisor for campaign_stats_daily (alias: csd) */
+export const FX_TO_USD_CASE = fxCase("csd");
+
+/** FX divisor for publisher_stats_daily (alias: psd) */
+export const FX_TO_USD_PSD = fxCase("psd");

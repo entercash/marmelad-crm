@@ -112,8 +112,9 @@ export async function syncTaboolaCampaigns(
   params: TaboolaSyncParams,
 ): Promise<SyncResult> {
   const trafficSourceId = await getTaboolaSourceId();
-  const adAccountId = await resolveAdAccountId(params.accountId, trafficSourceId);
   const config = await loadTaboolaConfigFromDB(params.accountId);
+  // Use Taboola's own account ID as externalId (not our internal CRM accountId)
+  const adAccountId = await resolveAdAccountId(config.accountId, trafficSourceId);
   const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 

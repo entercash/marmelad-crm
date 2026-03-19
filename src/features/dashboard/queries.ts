@@ -14,7 +14,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ACCT_MULT_CTE } from "@/lib/spend-queries";
+import { ACCT_MULT_CTE, FX_TO_USD_CASE } from "@/lib/spend-queries";
 import { getAccounts } from "@/features/ad-accounts/queries";
 import { getCampaignLinkStats, getCampaignLinkDailyRevenue } from "@/features/campaign-links/queries";
 import { getExpenseSummary } from "@/features/expenses/queries";
@@ -82,7 +82,7 @@ async function getDashboardAdSpend(
   const rows = await prisma.$queryRaw<{ total: Prisma.Decimal }[]>(
     Prisma.sql`
       ${ACCT_MULT_CTE}
-      SELECT COALESCE(SUM(csd."spend" * COALESCE(am.multiplier, 1)), 0) as total
+      SELECT COALESCE(SUM(csd."spend" / ${FX_TO_USD_CASE} * COALESCE(am.multiplier, 1)), 0) as total
       FROM "campaign_stats_daily" csd
       JOIN "campaigns" c ON c."id" = csd."campaignId"
       JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
@@ -190,7 +190,7 @@ export async function getDashboardTimeSeries(
       Prisma.sql`
         ${ACCT_MULT_CTE}
         SELECT csd."date"::text as date,
-               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as spend
+               SUM(csd."spend" / ${FX_TO_USD_CASE} * COALESCE(am.multiplier, 1)) as spend
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
@@ -291,7 +291,7 @@ export async function getTopAgenciesBySpend(
       Prisma.sql`
         ${ACCT_MULT_CTE}
         SELECT ag."name" as "agencyName",
-               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as "totalSpend"
+               SUM(csd."spend" / ${FX_TO_USD_CASE} * COALESCE(am.multiplier, 1)) as "totalSpend"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
@@ -342,7 +342,7 @@ export async function getSpendByAccount(
         ${ACCT_MULT_CTE}
         SELECT a."name" as "accountName",
                ag."name" as "agencyName",
-               SUM(csd."spend" * COALESCE(am.multiplier, 1)) as "totalSpend"
+               SUM(csd."spend" / ${FX_TO_USD_CASE} * COALESCE(am.multiplier, 1)) as "totalSpend"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"

@@ -11,6 +11,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AccountStatus, AccountPlatform, AccountType } from "@prisma/client";
+import { FX_TO_USD_CASE } from "@/lib/spend-queries";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -152,16 +153,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
       >`
         SELECT aa."externalId",
                SUM(csd."spend") as "totalNative",
-               SUM(csd."spend" / CASE csd."currency"
-                 WHEN 'HKD' THEN 7.80
-                 WHEN 'EUR' THEN 0.92
-                 WHEN 'GBP' THEN 0.79
-                 WHEN 'ILS' THEN 3.65
-                 WHEN 'BRL' THEN 5.00
-                 WHEN 'JPY' THEN 150.0
-                 WHEN 'USD' THEN 1.0
-                 ELSE 1.0
-               END) as "totalUsd"
+               SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"

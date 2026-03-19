@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
 import { getKeitaroSettings } from "@/features/integration-settings/queries";
 import { CRM_TIMEZONE, todayCrm } from "@/lib/date";
+import { FX_TO_USD_CASE } from "@/lib/spend-queries";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ async function getTaboolaStatsByCampaign(
   >`
     SELECT c."externalId",
            SUM(csd."clicks")::bigint as clicks,
-           SUM(csd."spend") as spend,
+           SUM(csd."spend" / ${FX_TO_USD_CASE}) as spend,
            SUM(csd."impressions")::bigint as impressions
     FROM "campaign_stats_daily" csd
     JOIN "campaigns" c ON c."id" = csd."campaignId"

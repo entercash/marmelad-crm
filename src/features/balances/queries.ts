@@ -9,6 +9,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { FX_TO_USD_CASE } from "@/lib/spend-queries";
 
 // ─── Row types ────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
         { externalId: string; totalUsd: Prisma.Decimal }[]
       >`
         SELECT aa."externalId",
-               SUM(csd."spend") as "totalUsd"
+               SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"

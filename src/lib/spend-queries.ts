@@ -43,3 +43,23 @@ export const ACCT_MULT_CTE = Prisma.sql`WITH acct_mult AS (${ACCT_MULT_BODY})`;
  * inside existing CTEs.
  */
 export const ACCT_MULT_SUB_CTE = Prisma.sql`acct_mult AS (${ACCT_MULT_BODY})`;
+
+/**
+ * SQL CASE expression that converts campaign_stats_daily.spend from native
+ * currency to USD. Use inside SUM(): SUM(csd."spend" / ${FX_TO_USD_CASE})
+ *
+ * Hardcoded fallback rates — close enough for performance marketing P&L.
+ * Rates are "units of foreign currency per 1 USD" (divide to get USD).
+ */
+export const FX_TO_USD_CASE = Prisma.sql`
+  CASE csd."currency"
+    WHEN 'USD' THEN 1.0
+    WHEN 'HKD' THEN 7.80
+    WHEN 'EUR' THEN 0.92
+    WHEN 'GBP' THEN 0.79
+    WHEN 'ILS' THEN 3.65
+    WHEN 'BRL' THEN 5.00
+    WHEN 'JPY' THEN 150.0
+    ELSE 1.0
+  END
+`;

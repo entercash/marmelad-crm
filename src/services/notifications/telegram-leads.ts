@@ -132,14 +132,14 @@ export async function notifyNewLeads(): Promise<number> {
   // 4. Filter new conversions (id > lastConversionId)
   const lastId = await getLastConversionId();
   const newConversions = conversions
-    .filter((c) => c.id > lastId)
-    .sort((a, b) => a.id - b.id); // oldest first for sending
+    .filter((c) => c.conversion_id > lastId)
+    .sort((a, b) => a.conversion_id - b.conversion_id); // oldest first for sending
 
   if (newConversions.length === 0) return 0;
 
   // On first run (lastId=0), set watermark to latest without spamming
   if (lastId === 0) {
-    const maxId = Math.max(...conversions.map((c) => c.id));
+    const maxId = Math.max(...conversions.map((c) => c.conversion_id));
     await setLastConversionId(maxId);
     console.log(`[telegram-leads] First run — set watermark to ${maxId}, skipping ${conversions.length} existing conversions`);
     return 0;
@@ -156,7 +156,7 @@ export async function notifyNewLeads(): Promise<number> {
     const siteSlug = conv.sub_id_3 || "";
     const site = await resolveSiteName(siteSlug);
     const geo = conv.sub_id_6 || conv.country || "";
-    const time = formatTime(conv.datetime);
+    const time = formatTime(conv.click_datetime);
 
     const siteDisplay = site
       ? site.numericId
@@ -181,9 +181,9 @@ export async function notifyNewLeads(): Promise<number> {
 
     if (result.ok) {
       sent++;
-      maxSentId = Math.max(maxSentId, conv.id);
+      maxSentId = Math.max(maxSentId, conv.conversion_id);
     } else {
-      console.error(`[telegram-leads] Failed to send for conversion ${conv.id}: ${result.error}`);
+      console.error(`[telegram-leads] Failed to send for conversion ${conv.conversion_id}: ${result.error}`);
       // Stop on first failure to avoid spamming broken config
       break;
     }

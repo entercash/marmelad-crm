@@ -122,12 +122,12 @@ export interface KeitaroCampaign {
 
 // ─── Conversions (individual) ───────────────────────────────────────────────
 
-/** A single conversion record from Keitaro /conversions endpoint. */
+/** A single conversion record from Keitaro /conversions/log endpoint. */
 export interface KeitaroConversion {
-  id: number;
+  conversion_id: number;
   click_id: string;
   campaign_id: number;
-  datetime: string;           // "YYYY-MM-DD HH:mm:ss"
+  click_datetime: string;     // "YYYY-MM-DD HH:mm:ss"
   status: string;             // "lead", "sale", "rejected", etc.
   revenue: number | string;
   sub_id_1?: string;          // campaign_id (Taboola)

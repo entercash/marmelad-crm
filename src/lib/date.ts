@@ -38,9 +38,12 @@ export function toApiDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Parse a YYYY-MM-DD string to a UTC-midnight Date for DB storage */
+/** Parse a date string to a UTC-midnight Date for DB storage.
+ *  Accepts "YYYY-MM-DD" or "YYYY-MM-DD HH:mm:ss.S" (Taboola format). */
 export function fromApiDate(dateStr: string): Date {
-  return new Date(`${dateStr}T00:00:00.000Z`);
+  // Strip anything after the first 10 chars (the YYYY-MM-DD part)
+  const ymd = dateStr.slice(0, 10);
+  return new Date(`${ymd}T00:00:00.000Z`);
 }
 
 /** Return yesterday's date at UTC midnight */

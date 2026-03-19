@@ -2,8 +2,11 @@
  * Telegram Lead Notifications
  *
  * After each Keitaro sync, fetches individual conversions from Keitaro API,
- * compares against the last processed conversion ID (stored in Redis),
+ * compares against the last processed click_datetime (stored in Redis),
  * and sends one Telegram message per new lead.
+ *
+ * Watermark strategy: uses click_datetime string ("YYYY-MM-DD HH:mm:ss")
+ * because Keitaro conversion_id is a UUID (not sortable numerically).
  */
 
 import { createKeitaroClient } from "@/integrations/keitaro";
@@ -14,7 +17,7 @@ import { getKeitaroSettings } from "@/features/integration-settings/queries";
 import { prisma } from "@/lib/prisma";
 import { todayCrm, daysAgoCrm } from "@/lib/date";
 
-const REDIS_KEY = "telegram:lastConversionId";
+const REDIS_KEY = "telegram:lastConversionDatetime";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -23,22 +26,21 @@ async function getRedis() {
   return redis;
 }
 
-async function getLastConversionId(): Promise<number> {
+async function getLastDatetime(): Promise<string | null> {
   try {
     const redis = await getRedis();
-    const val = await redis.get(REDIS_KEY);
-    return val ? Number(val) : 0;
+    return await redis.get(REDIS_KEY);
   } catch {
-    return 0;
+    return null;
   }
 }
 
-async function setLastConversionId(id: number): Promise<void> {
+async function setLastDatetime(dt: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(REDIS_KEY, String(id));
+    await redis.set(REDIS_KEY, dt);
   } catch (err) {
-    console.error("[telegram-leads] Failed to save lastConversionId:", err);
+    console.error("[telegram-leads] Failed to save lastDatetime:", err);
   }
 }
 
@@ -129,27 +131,33 @@ export async function notifyNewLeads(): Promise<number> {
   console.log(`[telegram-leads] Fetched ${conversions.length} conversions from Keitaro`);
   if (conversions.length === 0) return 0;
 
-  // 4. Filter new conversions (id > lastConversionId)
-  const lastId = await getLastConversionId();
-  const newConversions = conversions
-    .filter((c) => c.conversion_id > lastId)
-    .sort((a, b) => a.conversion_id - b.conversion_id); // oldest first for sending
+  // 4. Filter new conversions (click_datetime > last watermark)
+  const lastDt = await getLastDatetime();
+
+  // Sort by click_datetime ascending (oldest first)
+  const sorted = [...conversions].sort((a, b) =>
+    a.click_datetime.localeCompare(b.click_datetime),
+  );
+
+  const newConversions = lastDt
+    ? sorted.filter((c) => c.click_datetime > lastDt)
+    : sorted;
 
   if (newConversions.length === 0) return 0;
 
-  // On first run (lastId=0), set watermark to latest without spamming
-  if (lastId === 0) {
-    const maxId = Math.max(...conversions.map((c) => c.conversion_id));
-    await setLastConversionId(maxId);
-    console.log(`[telegram-leads] First run — set watermark to ${maxId}, skipping ${conversions.length} existing conversions`);
+  // On first run (no watermark), set watermark to latest without spamming
+  if (!lastDt) {
+    const maxDt = sorted[sorted.length - 1].click_datetime;
+    await setLastDatetime(maxDt);
+    console.log(`[telegram-leads] First run — set watermark to ${maxDt}, skipping ${conversions.length} existing conversions`);
     return 0;
   }
 
-  console.log(`[telegram-leads] Found ${newConversions.length} new conversions (after id=${lastId})`);
+  console.log(`[telegram-leads] Found ${newConversions.length} new conversions (after ${lastDt})`);
 
   // 5. Send one message per lead
   let sent = 0;
-  let maxSentId = lastId;
+  let maxDt = lastDt;
 
   for (const conv of newConversions) {
     const campaignName = await resolveCampaignName(conv.campaign_id);
@@ -181,7 +189,9 @@ export async function notifyNewLeads(): Promise<number> {
 
     if (result.ok) {
       sent++;
-      maxSentId = Math.max(maxSentId, conv.conversion_id);
+      if (conv.click_datetime > maxDt) {
+        maxDt = conv.click_datetime;
+      }
     } else {
       console.error(`[telegram-leads] Failed to send for conversion ${conv.conversion_id}: ${result.error}`);
       // Stop on first failure to avoid spamming broken config
@@ -195,8 +205,8 @@ export async function notifyNewLeads(): Promise<number> {
   }
 
   // 6. Update watermark
-  if (maxSentId > lastId) {
-    await setLastConversionId(maxSentId);
+  if (maxDt > lastDt) {
+    await setLastDatetime(maxDt);
   }
 
   console.log(`[telegram-leads] Sent ${sent}/${newConversions.length} notifications`);

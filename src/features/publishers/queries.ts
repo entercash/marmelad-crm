@@ -525,14 +525,16 @@ export async function getPublisherStats(params: {
     `,
   );
 
-  // 3. Get ALL CampaignLinks (no country filter — GEO is already applied to publisher_stats_daily)
-  //    We need all links for Keitaro matching and revenue calculation.
-  const links = await getCampaignLinksForPublishers();
+  // 3. Get CampaignLinks — filter by selected campaign if provided
+  const allLinks = await getCampaignLinksForPublishers();
+  const links = campaignId
+    ? allLinks.filter((l) => l.taboolaCampaignExternalId === campaignId)
+    : allLinks;
   const linkByTaboolaCampaign = new Map(
     links.map((l) => [l.taboolaCampaignExternalId, l]),
   );
 
-  // 4. Site → campaign associations (no country filter — need all campaigns for revenue calc)
+  // 4. Site → campaign associations — scope to selected campaign if provided
   const siteIds = rawRows.map((r) => r.siteExternalId);
   const siteCampaigns = await getSiteCampaignAssociations(siteIds, undefined, dateFrom, dateTo);
 

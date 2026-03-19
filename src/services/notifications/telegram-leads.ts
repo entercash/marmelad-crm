@@ -96,12 +96,14 @@ export async function notifyNewLeads(): Promise<number> {
   // 1. Check Telegram is configured
   const tgSettings = await getTelegramSettings();
   if (!tgSettings.botToken || !tgSettings.chatId) {
+    console.log("[telegram-leads] Skipping — Telegram not configured");
     return 0;
   }
 
   // 2. Check Keitaro is configured
   const kSettings = await getKeitaroSettings();
   if (!kSettings.apiUrl || !kSettings.apiKey) {
+    console.log("[telegram-leads] Skipping — Keitaro not configured");
     return 0;
   }
 
@@ -124,6 +126,7 @@ export async function notifyNewLeads(): Promise<number> {
     return 0;
   }
 
+  console.log(`[telegram-leads] Fetched ${conversions.length} conversions from Keitaro`);
   if (conversions.length === 0) return 0;
 
   // 4. Filter new conversions (id > lastConversionId)

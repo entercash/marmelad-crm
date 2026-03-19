@@ -11,6 +11,7 @@ import {
   getAdspectSettings,
   getTelegramSettings,
   getGoogleSettings,
+  getPostbackToken,
 } from "@/features/integration-settings/queries";
 import { prisma } from "@/lib/prisma";
 
@@ -19,7 +20,7 @@ export const metadata = { title: "Settings" };
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default async function SettingsPage() {
-  const [taboolaAccounts, connectedIds, keitaroInstances, adspectSettings, telegramSettings, googleSettings] = await Promise.all([
+  const [taboolaAccounts, connectedIds, keitaroInstances, adspectSettings, telegramSettings, googleSettings, postbackToken] = await Promise.all([
     prisma.account.findMany({
       where: { platform: "TABOOLA" },
       orderBy: { name: "asc" },
@@ -30,6 +31,7 @@ export default async function SettingsPage() {
     getAdspectSettings(),
     getTelegramSettings(),
     getGoogleSettings(),
+    getPostbackToken(),
   ]);
 
   // Pre-fetch Taboola settings for connected accounts
@@ -69,6 +71,7 @@ export default async function SettingsPage() {
       <SettingsTabs
         taboolaAccounts={taboolaOptions}
         keitaroInstances={keitaroOptions}
+        keitaroPostbackToken={postbackToken}
         adspect={{
           apiKey: adspectSettings.apiKey ?? "",
           configured: !!adspectSettings.apiKey,

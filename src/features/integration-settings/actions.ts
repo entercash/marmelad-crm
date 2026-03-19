@@ -11,7 +11,7 @@ import type { TaboolaConfig } from "@/integrations/taboola/client";
 import { AdspectClient }   from "@/integrations/adspect/client";
 import { prisma }          from "@/lib/prisma";
 import crypto from "crypto";
-import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings, getTelegramSettings, getGoogleSettings } from "./queries";
+import { setSetting, getKeitaroSettings, getKeitaroInstanceSettings, getTaboolaAccountSettings, getAdspectSettings, getTelegramSettings, getGoogleSettings, upsertPostbackToken } from "./queries";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 // ─── Save Keitaro Settings ──────────────────────────────────────────────────
@@ -436,4 +436,15 @@ export async function disconnectTelegram(): Promise<ActionResult> {
 
   revalidatePath("/settings");
   return { success: true };
+}
+
+// ─── Regenerate Keitaro Postback Token ──────────────────────────────────────
+
+export async function regeneratePostbackToken(): Promise<ActionResult & { token?: string }> {
+  const denied = await guardAdmin();
+  if (denied) return denied;
+
+  const token = await upsertPostbackToken();
+  revalidatePath("/settings");
+  return { success: true, token };
 }

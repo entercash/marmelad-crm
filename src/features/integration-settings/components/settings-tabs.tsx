@@ -19,6 +19,7 @@ import type { GoogleConnectionProps } from "./google-connection";
 interface SettingsTabsProps {
   taboolaAccounts: TaboolaAccountOption[];
   keitaroInstances: KeitaroInstanceOption[];
+  keitaroPostbackToken: string | null;
   adspect: AdspectConnectionProps;
   telegram: TelegramConnectionProps;
   google: GoogleConnectionProps;
@@ -26,7 +27,7 @@ interface SettingsTabsProps {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect, telegram, google }: SettingsTabsProps) {
+export function SettingsTabs({ taboolaAccounts, keitaroInstances, keitaroPostbackToken, adspect, telegram, google }: SettingsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "taboola";
@@ -52,7 +53,7 @@ export function SettingsTabs({ taboolaAccounts, keitaroInstances, adspect, teleg
       </TabsContent>
 
       <TabsContent value="keitaro">
-        <KeitaroConnectionsList instances={keitaroInstances} />
+        <KeitaroConnectionsList instances={keitaroInstances} postbackToken={keitaroPostbackToken} />
       </TabsContent>
 
       <TabsContent value="adspect">

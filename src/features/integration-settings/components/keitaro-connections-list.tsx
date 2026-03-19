@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, AlertCircle, Loader2, Trash2, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Trash2, Plus, ChevronDown, ChevronUp, Copy, RefreshCw } from "lucide-react";
 
 import { Input }  from "@/components/ui/input";
 import { Label }  from "@/components/ui/label";
@@ -12,6 +12,7 @@ import {
   saveKeitaroInstance,
   testKeitaroInstance,
   deleteKeitaroInstance,
+  regeneratePostbackToken,
 } from "../actions";
 import type { TestConnectionResult } from "../actions";
 
@@ -261,9 +262,77 @@ function AddKeitaroForm() {
 
 // ─── List Component ─────────────────────────────────────────────────────────
 
-export function KeitaroConnectionsList({ instances }: KeitaroConnectionsListProps) {
+// ─── Postback URL Section ───────────────────────────────────────────────────
+
+function PostbackUrlSection({ postbackToken }: { postbackToken: string | null }) {
+  const [token, setToken] = useState(postbackToken);
+  const [regenerating, setRegenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://marmelad-crm.com";
+  const postbackUrl = token
+    ? `${baseUrl}/api/postback/keitaro?token=${token}&campaign_name={campaign_name}&site={site}&site_id={site_id}&geo={country}&revenue={revenue}&status={status}&click_id={click_id}&datetime={datetime}&sub1={sub_id_1}`
+    : null;
+
+  async function handleRegenerate() {
+    setRegenerating(true);
+    const result = await regeneratePostbackToken();
+    setRegenerating(false);
+    if (result.success && result.token) {
+      setToken(result.token);
+    }
+  }
+
+  async function handleCopy() {
+    if (!postbackUrl) return;
+    await navigator.clipboard.writeText(postbackUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
+      <h4 className="mb-2 text-sm font-medium text-white">Telegram Lead Postback</h4>
+      <p className="mb-3 text-xs text-slate-400">
+        Configure this URL as a postback in Keitaro to receive realtime lead notifications in Telegram.
+      </p>
+
+      {postbackUrl ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Input
+              readOnly
+              value={postbackUrl}
+              className="font-mono text-[11px] text-slate-300"
+            />
+            <Button type="button" variant="outline" size="sm" onClick={handleCopy} className="shrink-0">
+              {copied ? "Copied!" : <><Copy className="mr-1.5 h-3.5 w-3.5" />Copy</>}
+            </Button>
+          </div>
+          <div>
+            <Button type="button" variant="ghost" size="sm" onClick={handleRegenerate} disabled={regenerating} className="text-xs text-slate-400 hover:text-white">
+              {regenerating ? (
+                <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Regenerating...</>
+              ) : (
+                <><RefreshCw className="mr-1.5 h-3 w-3" />Regenerate Token</>
+              )}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button type="button" variant="outline" size="sm" onClick={handleRegenerate} disabled={regenerating}>
+          {regenerating ? "Generating..." : "Generate Postback URL"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ─── List Component ─────────────────────────────────────────────────────────
+
+export function KeitaroConnectionsList({ instances, postbackToken }: KeitaroConnectionsListProps & { postbackToken: string | null }) {
+  return (
+    <div className="flex flex-col gap-4">
       {instances.length === 0 && (
         <p className="text-sm text-slate-400">No Keitaro instances configured yet.</p>
       )}
@@ -271,6 +340,7 @@ export function KeitaroConnectionsList({ instances }: KeitaroConnectionsListProp
         <InstanceRow key={inst.id} instance={inst} />
       ))}
       <AddKeitaroForm />
+      <PostbackUrlSection postbackToken={postbackToken} />
     </div>
   );
 }

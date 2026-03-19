@@ -10,7 +10,6 @@ import { ValidationError } from "../../lib/errors";
 import { isValidDateStr, todayCrm, daysAgoCrm } from "../../lib/date";
 import type { KeitaroJobPayload } from "../types";
 import { syncKeitaroConversionStatsDaily } from "../../services/sync/keitaro.sync";
-import { notifyNewLeads } from "../../services/notifications/telegram-leads";
 
 // ─── Date sentinel resolution ────────────────────────────────────────────────
 
@@ -72,14 +71,6 @@ async function handleConversionStats(
   console.log(
     `[keitaro:conversion-stats-daily] Done | fetched=${result.recordsFetched} updated=${result.recordsUpdated} skipped=${result.recordsSkipped} failed=${result.recordsFailed} | syncLogId=${result.syncLogId}`,
   );
-
-  // Send Telegram notifications for new leads (non-blocking)
-  try {
-    const sent = await notifyNewLeads();
-    if (sent > 0) {
-      console.log(`[keitaro:conversion-stats-daily] Telegram: sent ${sent} lead notifications`);
-    }
-  } catch (err) {
-    console.error("[keitaro:conversion-stats-daily] Telegram notification error:", err);
-  }
+  // Telegram lead notifications are now handled via realtime postback endpoint
+  // (/api/postback/keitaro) instead of pull-based polling.
 }

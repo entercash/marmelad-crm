@@ -269,6 +269,27 @@ export async function isTelegramConfigured(): Promise<boolean> {
   return !!(botToken && chatId);
 }
 
+// ─── Keitaro Postback Token ─────────────────────────────────────────────────
+
+const POSTBACK_TOKEN_KEY = "keitaro.postbackToken";
+
+/** Get the postback token for Keitaro webhook auth. */
+export async function getPostbackToken(): Promise<string | null> {
+  return getSetting(POSTBACK_TOKEN_KEY);
+}
+
+/** Generate or regenerate the postback token. Returns the new token. */
+export async function upsertPostbackToken(): Promise<string> {
+  const { randomUUID } = await import("crypto");
+  const token = randomUUID();
+  await prisma.integrationSetting.upsert({
+    where: { key: POSTBACK_TOKEN_KEY },
+    update: { value: token },
+    create: { key: POSTBACK_TOKEN_KEY, value: token },
+  });
+  return token;
+}
+
 // ─── Google-specific helpers ────────────────────────────────────────────────
 
 export interface GoogleSettingsData {

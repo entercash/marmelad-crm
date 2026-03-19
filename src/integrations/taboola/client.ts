@@ -180,9 +180,7 @@ export class TaboolaClient {
    * with < ~10k campaigns).
    */
   async getCampaigns(): Promise<TaboolaCampaignsResponse> {
-    return this.get<TaboolaCampaignsResponse>("/campaigns", {
-      fetch_level: "R",  // Return all campaigns including archived/stopped
-    });
+    return this.get<TaboolaCampaignsResponse>("/campaigns");
   }
 
   /**

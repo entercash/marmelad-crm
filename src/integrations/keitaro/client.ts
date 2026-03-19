@@ -188,16 +188,21 @@ export class KeitaroClient {
     dateTo: string;     // YYYY-MM-DD
     limit?: number;
   }): Promise<KeitaroConversion[]> {
-    const qs = new URLSearchParams({
-      "range[from]": params.dateFrom,
-      "range[to]": params.dateTo,
-      limit: String(params.limit ?? 100),
-      sort: "-datetime",
-    });
-    const resp = await this.get<KeitaroConversion[]>(
-      `/conversions?${qs.toString()}`,
+    const body = {
+      range: { from: params.dateFrom, to: params.dateTo },
+      columns: [
+        "id", "click_id", "campaign_id", "datetime", "status", "revenue",
+        "country", "sub_id_1", "sub_id_2", "sub_id_3", "sub_id_4",
+        "sub_id_5", "sub_id_6", "sub_id_7", "sub_id_8", "sub_id_9", "sub_id_10",
+      ],
+      order: [["datetime", "DESC"]],
+      limit: params.limit ?? 100,
+    };
+    const resp = await this.post<typeof body, { rows: KeitaroConversion[] }>(
+      "/conversions/log",
+      body,
     );
-    return resp;
+    return resp.rows ?? [];
   }
 }
 

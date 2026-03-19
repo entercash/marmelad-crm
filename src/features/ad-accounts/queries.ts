@@ -143,14 +143,25 @@ export async function getAccounts(): Promise<AccountRow[]> {
     }
     const adAccountExternalIds = Array.from(taboolaToAccountId.keys());
 
-    // Sum spend from campaign_stats_daily via AdAccount bridge (already in USD)
+    // Sum spend from campaign_stats_daily via AdAccount bridge.
+    // Spend is stored in the account's native currency — convert to USD using csd.currency.
     let spendMap: Record<string, { native: number; usd: number }> = {};
     if (adAccountExternalIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { externalId: string; totalUsd: Prisma.Decimal }[]
+        { externalId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
       >`
         SELECT aa."externalId",
-               SUM(csd."spend") as "totalUsd"
+               SUM(csd."spend") as "totalNative",
+               SUM(csd."spend" / CASE csd."currency"
+                 WHEN 'HKD' THEN 7.80
+                 WHEN 'EUR' THEN 0.92
+                 WHEN 'GBP' THEN 0.79
+                 WHEN 'ILS' THEN 3.65
+                 WHEN 'BRL' THEN 5.00
+                 WHEN 'JPY' THEN 150.0
+                 WHEN 'USD' THEN 1.0
+                 ELSE 1.0
+               END) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
@@ -161,7 +172,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         const accountId = taboolaToAccountId.get(sr.externalId);
         if (accountId) {
           spendMap[accountId] = {
-            native: Number(sr.totalUsd),
+            native: Number(sr.totalNative),
             usd:    Number(sr.totalUsd),
           };
         }

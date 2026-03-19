@@ -202,6 +202,10 @@ export class KeitaroClient {
       "/conversions/log",
       body,
     );
+    // Debug: log first row structure to understand Keitaro response format
+    if (resp.rows?.[0]) {
+      console.log("[keitaro:conversions/log] Sample row:", JSON.stringify(resp.rows[0]));
+    }
     return resp.rows ?? [];
   }
 }

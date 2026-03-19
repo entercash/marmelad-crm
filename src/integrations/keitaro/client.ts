@@ -195,7 +195,7 @@ export class KeitaroClient {
         "country", "sub_id_1", "sub_id_2", "sub_id_3", "sub_id_4",
         "sub_id_5", "sub_id_6", "sub_id_7", "sub_id_8", "sub_id_9", "sub_id_10",
       ],
-      order: [["datetime", "DESC"]],
+      sort: [{ name: "datetime", order: "desc" }],
       limit: params.limit ?? 100,
     };
     const resp = await this.post<typeof body, { rows: KeitaroConversion[] }>(

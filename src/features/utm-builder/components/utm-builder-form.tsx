@@ -17,16 +17,16 @@ type Props = {
 };
 
 const SUB_MAPPING = [
-  { sub: "camp",         macro: "{campaign_id}", desc: "Campaign ID" },
-  { sub: "cont",         macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
   { sub: "utm_source",   macro: "{site}", desc: "Publisher site name" },
-  { sub: "src_id",       macro: "{site_id}", desc: "Publisher site ID" },
   { sub: "utm_medium",   macro: "{platform}", desc: "Device (Desktop/Mobile/Tablet)" },
+  { sub: "utm_campaign", macro: "{campaign_name}", desc: "Campaign name" },
+  { sub: "utm_content",  macro: "{campaign_item_id}", desc: "Creative / Ad Item ID" },
+  { sub: "utm_term",     macro: "{title}", desc: "Ad title text" },
+  { sub: "cid",          macro: "{campaign_id}", desc: "Campaign ID" },
+  { sub: "sid",          macro: "{site_id}", desc: "Publisher site ID" },
   { sub: "geo",          macro: "{country}", desc: "Country code (ISO)" },
-  { sub: "click_id",     macro: "{click_id}", desc: "Unique click ID (for S2S postback)" },
-  { sub: "network_id",   macro: "{account_id}", desc: "Account ID" },
-  { sub: "headline",     macro: "{title}", desc: "Ad title text" },
-  { sub: "utm_term",     macro: "{campaign_name}", desc: "Campaign name" },
+  { sub: "clickid",      macro: "{click_id}", desc: "Unique click ID (for S2S postback)" },
+  { sub: "aid",          macro: "{account_id}", desc: "Account ID" },
 ] as const;
 
 const PARAMS_STRING = SUB_MAPPING.map((m) => `${m.sub}=${m.macro}`).join("&");

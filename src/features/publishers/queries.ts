@@ -200,17 +200,17 @@ type KeitaroSiteStats = { leads: number; revenue: number };
  * sub_id_3 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
  * Note: sub_id_4 = {site_id} is empty — Taboola doesn't populate numeric site_id.
  *
- * Keitaro sub_id mapping (positional, matches UTM builder):
- *   sub_id_1 = camp      = {campaign_id}
- *   sub_id_2 = cont      = {campaign_item_id}
- *   sub_id_3 = utm_source = {site}        (publisher name)
- *   sub_id_4 = src_id    = {site_id}      (publisher numeric ID) ← THIS
- *   sub_id_5 = utm_medium = {platform}
- *   sub_id_6 = geo       = {country}
- *   sub_id_7 = click_id  = {click_id}
- *   sub_id_8 = network_id = {account_id}
- *   sub_id_9 = headline  = {title}
- *   sub_id_10 = utm_term = {campaign_name}
+ * Keitaro sub_id mapping (configured per-campaign in Keitaro):
+ *   sub_id_1 = cid          = {campaign_id}
+ *   sub_id_2 = utm_content  = {campaign_item_id}
+ *   sub_id_3 = utm_source   = {site}           (publisher name) ← used for matching
+ *   sub_id_4 = sid          = {site_id}         (publisher numeric ID)
+ *   sub_id_5 = utm_medium   = {platform}
+ *   sub_id_6 = geo          = {country}
+ *   sub_id_7 = clickid      = {click_id}
+ *   sub_id_8 = aid          = {account_id}
+ *   sub_id_9 = utm_term     = {title}
+ *   sub_id_10 = utm_campaign = {campaign_name}
  *
  * Returns a Map keyed by siteExternalId → { leads, revenue }.
  * Multiple campaigns are aggregated per site.

@@ -40,9 +40,11 @@ export type AccountRow = {
   rawSpentNative:  number;
   /** Raw spend converted to USD (historical FX, no commissions). */
   rawSpentUsd:     number;
-  /** Total cost in native currency (with commissions applied). */
+  /** Total cost in native currency (spend + crypto fee, no agency commission). */
   totalCostNative: number;
-  /** Total cost converted to USD (with commissions applied). */
+  /** Total cost in USD (spend + crypto fee, no agency commission). */
+  totalCostUsd:    number;
+  /** Total spend in USD (with agency commission + crypto fee). */
   totalSpentUsd:   number;
   /** Account purchase cost in USD (effective: account override ?? agency). */
   accountCostUsd:        number | null;
@@ -175,9 +177,13 @@ export async function getAccounts(): Promise<AccountRow[]> {
       const commPct   = ownComm ?? (r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : 0);
       const cryptoPct = ownCrypto ?? (r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : 0);
 
-      const commMultiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
-      const totalCostNative = rawSpentNative * commMultiplier;
-      const totalSpentUsd   = rawSpentUsd * commMultiplier;
+      // Account cost = spend + crypto fee only (no agency commission)
+      const cryptoMultiplier = 1 + cryptoPct / 100;
+      // Total spend = spend + crypto fee + agency commission
+      const fullMultiplier = (1 + commPct / 100) * cryptoMultiplier;
+      const totalCostNative = rawSpentNative * cryptoMultiplier;
+      const totalCostUsd    = rawSpentUsd * cryptoMultiplier;
+      const totalSpentUsd   = rawSpentUsd * fullMultiplier;
       const totalTopUp      = topUpMap.get(r.id) ?? 0;
 
       return {
@@ -196,6 +202,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
         rawSpentNative,
         rawSpentUsd,
         totalCostNative,
+        totalCostUsd,
         totalSpentUsd,
         accountCostUsd:        ownCost ?? (r.agency?.accountCostUsd ? Number(r.agency.accountCostUsd) : null),
         commissionPercent:     commPct > 0 ? commPct : null,

@@ -128,7 +128,7 @@ export function AccountCard({ account, agencies }: AccountCardProps) {
           </p>
         )}
         <p className="mt-2 text-[32px] font-extrabold leading-none tracking-tight text-white">
-          {fmtUsd(account.totalSpentUsd)}
+          {fmtUsd(account.totalCostUsd)}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           total cost

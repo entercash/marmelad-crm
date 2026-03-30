@@ -151,7 +151,7 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
           JOIN "campaigns" c ON c."id" = csd."campaignId"
           JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
           LEFT JOIN "accounts" a_direct
-            ON a_direct."externalId" = aa."externalId"
+            ON a_direct."name" = aa."name"
             AND aa."accountId" IS NULL
           WHERE COALESCE(aa."accountId", a_direct."id")
                 IN (${Prisma.join(accountIds)})

@@ -35,7 +35,7 @@ const ACCT_MULT_BODY = Prisma.sql`
     FROM "ad_accounts" aa
     LEFT JOIN "accounts" a_fk ON a_fk."id" = aa."accountId"
     LEFT JOIN "accounts" a_direct
-      ON a_direct."externalId" = aa."externalId"
+      ON a_direct."name" = aa."name"
       AND aa."accountId" IS NULL
     LEFT JOIN "agencies" ag
       ON ag."id" = COALESCE(a_fk."agencyId", a_direct."agencyId", aa."agencyId")

@@ -296,7 +296,7 @@ export async function getTopAgenciesBySpend(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        JOIN "accounts" a ON a."id" = aa."accountId"
+        JOIN "accounts" a ON a."id" = am."resolvedAccountId"
         JOIN "agencies" ag ON ag."id" = a."agencyId"
         WHERE a."agencyId" IS NOT NULL ${dateClause}
         GROUP BY ag."id", ag."name"
@@ -343,7 +343,7 @@ export async function getSpendByAccount(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        JOIN "accounts" a ON a."id" = aa."accountId"
+        JOIN "accounts" a ON a."id" = am."resolvedAccountId"
         LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
         ${dateClause}
         GROUP BY a."id", a."name", ag."name"

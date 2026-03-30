@@ -137,20 +137,24 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
       // table may not exist yet
     }
 
-    // Fetch raw USD spend from campaign_stats_daily via AdAccount.accountId direct FK (no commissions)
+    // Fetch raw USD spend via AdAccount.accountId with fallback to integration_settings bridge
     const accountIds = accounts.map((a) => a.id);
     let spendMap: Record<string, number> = {};
     if (accountIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
         { accountId: string; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT aa."accountId",
+        SELECT COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')) as "accountId",
                SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        WHERE aa."accountId" IN (${Prisma.join(accountIds)})
-        GROUP BY aa."accountId"
+        LEFT JOIN "integration_settings" iset
+          ON iset."value" = aa."externalId"
+          AND iset."key" LIKE 'taboola.%.taboolaAccountId'
+        WHERE COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId'))
+              IN (${Prisma.join(accountIds)})
+        GROUP BY 1
       `;
       for (const sr of spendRows) {
         if (sr.accountId) {

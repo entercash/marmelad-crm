@@ -25,10 +25,18 @@ import { Prisma } from "@prisma/client";
 const ACCT_MULT_BODY = Prisma.sql`
     SELECT
       aa."id" AS "adAccountId",
+      COALESCE(aa."accountId", iset_bridge."accountId") AS "resolvedAccountId",
       (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
       (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) AS multiplier
     FROM "ad_accounts" aa
-    LEFT JOIN "accounts" a ON a."id" = aa."accountId"
+    LEFT JOIN LATERAL (
+      SELECT SUBSTRING(iset."key" FROM 'taboola\.(.+)\.taboolaAccountId') AS "accountId"
+      FROM "integration_settings" iset
+      WHERE iset."value" = aa."externalId"
+        AND iset."key" LIKE 'taboola.%.taboolaAccountId'
+      LIMIT 1
+    ) iset_bridge ON aa."accountId" IS NULL
+    LEFT JOIN "accounts" a ON a."id" = COALESCE(aa."accountId", iset_bridge."accountId")
     LEFT JOIN "agencies" ag ON ag."id" = COALESCE(a."agencyId", aa."agencyId")
 `;
 

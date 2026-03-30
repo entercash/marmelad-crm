@@ -132,29 +132,34 @@ export async function getAccounts(): Promise<AccountRow[]> {
     const accountIds = rows.map((r) => r.id);
     let spendMap: Record<string, { native: number; usd: number }> = {};
     if (accountIds.length > 0) {
-      const spendRows = await prisma.$queryRaw<
-        { accountId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
-      >`
-        SELECT COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')) as "accountId",
-               SUM(csd."spend") as "totalNative",
-               SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
-        FROM "campaign_stats_daily" csd
-        JOIN "campaigns" c ON c."id" = csd."campaignId"
-        JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        LEFT JOIN "integration_settings" iset
-          ON iset."value" = aa."externalId"
-          AND iset."key" LIKE 'taboola.%.taboolaAccountId'
-        WHERE COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId'))
-              IN (${Prisma.join(accountIds)})
-        GROUP BY 1
-      `;
-      for (const sr of spendRows) {
-        if (sr.accountId) {
-          spendMap[sr.accountId] = {
-            native: Number(sr.totalNative),
-            usd:    Number(sr.totalUsd),
-          };
+      try {
+        const spendRows = await prisma.$queryRaw<
+          { accountId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
+        >`
+          SELECT COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola[.]([^.]+)[.]taboolaAccountId')) as "accountId",
+                 SUM(csd."spend") as "totalNative",
+                 SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
+          FROM "campaign_stats_daily" csd
+          JOIN "campaigns" c ON c."id" = csd."campaignId"
+          JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
+          LEFT JOIN "integration_settings" iset
+            ON iset."value" = aa."externalId"
+            AND iset."key" LIKE 'taboola.%.taboolaAccountId'
+            AND aa."accountId" IS NULL
+          WHERE COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola[.]([^.]+)[.]taboolaAccountId'))
+                IN (${Prisma.join(accountIds)})
+          GROUP BY 1
+        `;
+        for (const sr of spendRows) {
+          if (sr.accountId) {
+            spendMap[sr.accountId] = {
+              native: Number(sr.totalNative),
+              usd:    Number(sr.totalUsd),
+            };
+          }
         }
+      } catch (spendErr) {
+        console.error("[getAccounts] Spend query failed (accounts still shown):", spendErr);
       }
     }
 

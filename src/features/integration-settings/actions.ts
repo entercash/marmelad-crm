@@ -250,9 +250,18 @@ export async function disconnectTaboolaAccount(
   const denied = await guardAdmin();
   if (denied) return denied;
 
-  const prefix = `taboola.${accountId}.`;
+  // Only delete credentials — keep taboolaAccountId mapping so historical
+  // spend data remains visible in reports even after API is disconnected.
   await prisma.integrationSetting.deleteMany({
-    where: { key: { startsWith: prefix } },
+    where: {
+      key: {
+        in: [
+          `taboola.${accountId}.clientId`,
+          `taboola.${accountId}.clientSecret`,
+          `taboola.${accountId}.proxyUrl`,
+        ],
+      },
+    },
   });
 
   revalidatePath("/settings");

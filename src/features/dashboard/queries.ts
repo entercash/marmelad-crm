@@ -119,7 +119,7 @@ export async function getDashboardSummary(
 
     let spent = adSpend;
 
-    // Account purchase costs — attributed to createdAt date, with commissions
+    // Account purchase costs — attributed to createdAt date, crypto fee only (no agency commission)
     {
       const accounts = await getAccounts();
       for (const a of accounts) {
@@ -132,9 +132,8 @@ export async function getDashboardSummary(
           if (created < dateFrom || created > dateTo) continue;
         }
 
-        const commPct = a.commissionPercent ?? 0;
         const cryptoPct = a.cryptoPaymentPercent ?? 0;
-        const multiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
+        const multiplier = 1 + cryptoPct / 100;
         spent += accountCost * multiplier;
       }
     }

@@ -177,13 +177,10 @@ export async function getAccounts(): Promise<AccountRow[]> {
       const commPct   = ownComm ?? (r.agency?.commissionPercent ? Number(r.agency.commissionPercent) : 0);
       const cryptoPct = ownCrypto ?? (r.agency?.cryptoPaymentPercent ? Number(r.agency.cryptoPaymentPercent) : 0);
 
-      // Account cost = spend + crypto fee only (no agency commission)
-      const cryptoMultiplier = 1 + cryptoPct / 100;
-      // Total spend = spend + crypto fee + agency commission
-      const fullMultiplier = (1 + commPct / 100) * cryptoMultiplier;
-      const totalCostNative = rawSpentNative * cryptoMultiplier;
-      const totalCostUsd    = rawSpentUsd * cryptoMultiplier;
-      const totalSpentUsd   = rawSpentUsd * fullMultiplier;
+      const commMultiplier = (1 + commPct / 100) * (1 + cryptoPct / 100);
+      const totalCostNative = rawSpentNative * commMultiplier;
+      const totalCostUsd    = rawSpentUsd * commMultiplier;
+      const totalSpentUsd   = rawSpentUsd * commMultiplier;
       const totalTopUp      = topUpMap.get(r.id) ?? 0;
 
       return {

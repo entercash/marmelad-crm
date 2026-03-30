@@ -18,6 +18,6 @@ export const config = {
    *  - /favicon.ico    → browser favicon
    */
   matcher: [
-    "/((?!login|api/auth|api/health|api/postback|_next|favicon\\.ico).*)",
+    "/((?!login|api/auth|api/health|api/postback|api/debug|_next|favicon\\.ico).*)",
   ],
 };

@@ -127,43 +127,26 @@ export async function getAccounts(): Promise<AccountRow[]> {
       // table may not exist yet if migration hasn't been applied
     }
 
-    // Build Account.id → Taboola AdAccount.externalId mapping via integration settings.
-    // Settings store `taboola.<accountId>.taboolaAccountId` which is what AdAccount.externalId uses.
-    const accountIds = rows.map((r) => r.id);
-    const settingRows = await prisma.integrationSetting.findMany({
-      where: {
-        key: { in: accountIds.map((id) => `taboola.${id}.taboolaAccountId`) },
-      },
-      select: { key: true, value: true },
-    });
-    // Map: taboolaAccountId (AdAccount.externalId) → Account.id
-    const taboolaToAccountId = new Map<string, string>();
-    for (const s of settingRows) {
-      const match = s.key.match(/^taboola\.(.+)\.taboolaAccountId$/);
-      if (match && s.value) taboolaToAccountId.set(s.value, match[1]);
-    }
-    const adAccountExternalIds = Array.from(taboolaToAccountId.keys());
-
-    // Sum spend from campaign_stats_daily via AdAccount bridge.
+    // Sum spend from campaign_stats_daily via AdAccount.accountId direct FK.
     // Spend is stored in the account's native currency — convert to USD using csd.currency.
+    const accountIds = rows.map((r) => r.id);
     let spendMap: Record<string, { native: number; usd: number }> = {};
-    if (adAccountExternalIds.length > 0) {
+    if (accountIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { externalId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
+        { accountId: string; totalNative: Prisma.Decimal; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT aa."externalId",
+        SELECT aa."accountId",
                SUM(csd."spend") as "totalNative",
                SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        WHERE aa."externalId" IN (${Prisma.join(adAccountExternalIds)})
-        GROUP BY aa."externalId"
+        WHERE aa."accountId" IN (${Prisma.join(accountIds)})
+        GROUP BY aa."accountId"
       `;
       for (const sr of spendRows) {
-        const accountId = taboolaToAccountId.get(sr.externalId);
-        if (accountId) {
-          spendMap[accountId] = {
+        if (sr.accountId) {
+          spendMap[sr.accountId] = {
             native: Number(sr.totalNative),
             usd:    Number(sr.totalUsd),
           };

@@ -5,7 +5,7 @@
  * (CampaignStatsDaily → Campaign → AdAccount) to the Account/Agency
  * commission structure.
  *
- * Bridge: AdAccount.externalId = Account.externalId (both store Taboola account ID).
+ * Bridge: AdAccount.accountId → Account (direct FK, persists after API disconnect).
  */
 
 import { Prisma } from "@prisma/client";
@@ -13,7 +13,7 @@ import { Prisma } from "@prisma/client";
 /**
  * CTE that computes a commission multiplier per AdAccount.
  *
- * Bridge: AdAccount.externalId → integration_settings (taboola.<accountId>.taboolaAccountId) → Account.
+ * Bridge: AdAccount.accountId → Account (direct FK).
  * Commission = (1 + commissionPercent/100) × (1 + cryptoPaymentPercent/100).
  * Falls back to Agency commission if Account has no override.
  * Falls back to 1 (no commission) if no Account or Agency is linked.
@@ -28,11 +28,7 @@ const ACCT_MULT_BODY = Prisma.sql`
       (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
       (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) AS multiplier
     FROM "ad_accounts" aa
-    LEFT JOIN "integration_settings" iset
-      ON iset."value" = aa."externalId"
-      AND iset."key" LIKE 'taboola.%.taboolaAccountId'
-    LEFT JOIN "accounts" a
-      ON a."id" = SUBSTRING(iset."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
+    LEFT JOIN "accounts" a ON a."id" = aa."accountId"
     LEFT JOIN "agencies" ag ON ag."id" = COALESCE(a."agencyId", aa."agencyId")
 `;
 

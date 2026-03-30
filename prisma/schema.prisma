@@ -193,11 +193,13 @@ model AdAccount {
   externalId      String        // account ID on the external platform
   trafficSourceId String
   agencyId        String?
+  accountId       String?       // Link to CRM Account (persists after API disconnect)
   currency        String        @default("USD")
   isActive        Boolean       @default(true)
 
   trafficSource TrafficSource @relation(fields: [trafficSourceId], references: [id])
   agency        Agency?       @relation(fields: [agencyId], references: [id])
+  account       Account?      @relation(fields: [accountId], references: [id])
   campaigns     Campaign[]
 
   createdAt DateTime @default(now())
@@ -206,6 +208,7 @@ model AdAccount {
   // One account ID is unique per platform
   @@unique([trafficSourceId, externalId])
   @@index([agencyId])
+  @@index([accountId])
   @@map("ad_accounts")
 }
 
@@ -234,7 +237,8 @@ model Account {
   commissionPercent    Decimal? @db.Decimal(8, 4)
   cryptoPaymentPercent Decimal? @db.Decimal(8, 4)
 
-  topUps AccountTopUp[]
+  topUps     AccountTopUp[]
+  adAccounts AdAccount[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

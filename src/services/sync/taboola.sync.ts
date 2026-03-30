@@ -79,6 +79,7 @@ async function getTaboolaSourceId(): Promise<string> {
 async function resolveAdAccountId(
   externalAccountId: string,
   trafficSourceId: string,
+  crmAccountId?: string,
 ): Promise<string> {
   const account = await prisma.adAccount.upsert({
     where: {
@@ -87,11 +88,12 @@ async function resolveAdAccountId(
         externalId: externalAccountId,
       },
     },
-    update: {},
+    update: { ...(crmAccountId ? { accountId: crmAccountId } : {}) },
     create: {
       name: `Taboola ${externalAccountId}`, // will be updated when we have account name
       externalId: externalAccountId,
       trafficSourceId,
+      ...(crmAccountId ? { accountId: crmAccountId } : {}),
     },
     select: { id: true },
   });
@@ -114,7 +116,7 @@ export async function syncTaboolaCampaigns(
   const trafficSourceId = await getTaboolaSourceId();
   const config = await loadTaboolaConfigFromDB(params.accountId);
   // Use Taboola's own account ID as externalId (not our internal CRM accountId)
-  const adAccountId = await resolveAdAccountId(config.accountId, trafficSourceId);
+  const adAccountId = await resolveAdAccountId(config.accountId, trafficSourceId, params.accountId);
   const client = createTaboolaClient(config);
   const counter = new SyncCounter();
 

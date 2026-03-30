@@ -296,11 +296,7 @@ export async function getTopAgenciesBySpend(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        LEFT JOIN "integration_settings" iset2
-          ON iset2."value" = aa."externalId"
-          AND iset2."key" LIKE 'taboola.%.taboolaAccountId'
-        JOIN "accounts" a
-          ON a."id" = SUBSTRING(iset2."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
+        JOIN "accounts" a ON a."id" = aa."accountId"
         JOIN "agencies" ag ON ag."id" = a."agencyId"
         WHERE a."agencyId" IS NOT NULL ${dateClause}
         GROUP BY ag."id", ag."name"
@@ -347,11 +343,7 @@ export async function getSpendByAccount(
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
         LEFT JOIN acct_mult am ON am."adAccountId" = aa."id"
-        LEFT JOIN "integration_settings" iset2
-          ON iset2."value" = aa."externalId"
-          AND iset2."key" LIKE 'taboola.%.taboolaAccountId'
-        JOIN "accounts" a
-          ON a."id" = SUBSTRING(iset2."key" FROM 'taboola\\.(.+)\\.taboolaAccountId')
+        JOIN "accounts" a ON a."id" = aa."accountId"
         LEFT JOIN "agencies" ag ON ag."id" = a."agencyId"
         ${dateClause}
         GROUP BY a."id", a."name", ag."name"

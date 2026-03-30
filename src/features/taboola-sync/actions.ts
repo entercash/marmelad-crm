@@ -167,11 +167,12 @@ export async function syncAllTaboolaCampaigns(): Promise<SyncTaboolaResult> {
             externalId: config.accountId,
           },
         },
-        update: {},
+        update: { accountId: accountId },
         create: {
           name: account?.name ?? `Taboola ${config.accountId}`,
           externalId: config.accountId,
           trafficSourceId: taboola.id,
+          accountId: accountId,
         },
         select: { id: true },
       });

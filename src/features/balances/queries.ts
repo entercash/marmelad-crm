@@ -137,39 +137,24 @@ export async function getBalanceSummaries(): Promise<AccountBalanceSummary[]> {
       // table may not exist yet
     }
 
-    // Fetch raw USD spend from campaign_stats_daily via AdAccount bridge (no commissions)
-    // Bridge: Account.id → integration_settings (taboola.<accountId>.taboolaAccountId) → AdAccount.externalId
+    // Fetch raw USD spend from campaign_stats_daily via AdAccount.accountId direct FK (no commissions)
     const accountIds = accounts.map((a) => a.id);
-    const settingRows = await prisma.integrationSetting.findMany({
-      where: {
-        key: { in: accountIds.map((id) => `taboola.${id}.taboolaAccountId`) },
-      },
-      select: { key: true, value: true },
-    });
-    const taboolaToAccountId = new Map<string, string>();
-    for (const s of settingRows) {
-      const match = s.key.match(/^taboola\.(.+)\.taboolaAccountId$/);
-      if (match && s.value) taboolaToAccountId.set(s.value, match[1]);
-    }
-    const adAccountExternalIds = Array.from(taboolaToAccountId.keys());
-
     let spendMap: Record<string, number> = {};
-    if (adAccountExternalIds.length > 0) {
+    if (accountIds.length > 0) {
       const spendRows = await prisma.$queryRaw<
-        { externalId: string; totalUsd: Prisma.Decimal }[]
+        { accountId: string; totalUsd: Prisma.Decimal }[]
       >`
-        SELECT aa."externalId",
+        SELECT aa."accountId",
                SUM(csd."spend" / ${FX_TO_USD_CASE}) as "totalUsd"
         FROM "campaign_stats_daily" csd
         JOIN "campaigns" c ON c."id" = csd."campaignId"
         JOIN "ad_accounts" aa ON aa."id" = c."adAccountId"
-        WHERE aa."externalId" IN (${Prisma.join(adAccountExternalIds)})
-        GROUP BY aa."externalId"
+        WHERE aa."accountId" IN (${Prisma.join(accountIds)})
+        GROUP BY aa."accountId"
       `;
       for (const sr of spendRows) {
-        const accountId = taboolaToAccountId.get(sr.externalId);
-        if (accountId) {
-          spendMap[accountId] = Number(sr.totalUsd);
+        if (sr.accountId) {
+          spendMap[sr.accountId] = Number(sr.totalUsd);
         }
       }
     }

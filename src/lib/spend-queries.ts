@@ -25,17 +25,20 @@ import { Prisma } from "@prisma/client";
 const ACCT_MULT_BODY = Prisma.sql`
     SELECT
       aa."id" AS "adAccountId",
-      COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola[.]([^.]+)[.]taboolaAccountId')) AS "resolvedAccountId",
-      (1 + COALESCE(a."commissionPercent", ag."commissionPercent", 0) / 100) *
-      (1 + COALESCE(a."cryptoPaymentPercent", ag."cryptoPaymentPercent", 0) / 100) AS multiplier
+      COALESCE(aa."accountId", a_direct."id") AS "resolvedAccountId",
+      (1 + COALESCE(
+        COALESCE(a_fk."commissionPercent", a_direct."commissionPercent"),
+        ag."commissionPercent", 0) / 100) *
+      (1 + COALESCE(
+        COALESCE(a_fk."cryptoPaymentPercent", a_direct."cryptoPaymentPercent"),
+        ag."cryptoPaymentPercent", 0) / 100) AS multiplier
     FROM "ad_accounts" aa
-    LEFT JOIN "integration_settings" iset
-      ON iset."value" = aa."externalId"
-      AND iset."key" LIKE 'taboola.%.taboolaAccountId'
+    LEFT JOIN "accounts" a_fk ON a_fk."id" = aa."accountId"
+    LEFT JOIN "accounts" a_direct
+      ON a_direct."externalId" = aa."externalId"
       AND aa."accountId" IS NULL
-    LEFT JOIN "accounts" a
-      ON a."id" = COALESCE(aa."accountId", SUBSTRING(iset."key" FROM 'taboola[.]([^.]+)[.]taboolaAccountId'))
-    LEFT JOIN "agencies" ag ON ag."id" = COALESCE(a."agencyId", aa."agencyId")
+    LEFT JOIN "agencies" ag
+      ON ag."id" = COALESCE(a_fk."agencyId", a_direct."agencyId", aa."agencyId")
 `;
 
 export const ACCT_MULT_CTE = Prisma.sql`WITH acct_mult AS (${ACCT_MULT_BODY})`;

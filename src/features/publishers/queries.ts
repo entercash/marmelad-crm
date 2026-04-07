@@ -13,7 +13,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
-import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { getKeitaroInstances } from "@/features/integration-settings/queries";
 import { ACCT_MULT_CTE, FX_TO_USD_PSD } from "@/lib/spend-queries";
 import { CRM_TIMEZONE, todayCrm, toApiDate } from "@/lib/date";
 
@@ -66,6 +66,7 @@ type RawStatsRow = {
 type CampaignLinkInfo = {
   taboolaCampaignExternalId: string;
   keitaroCampaignExternalId: number;
+  keitaroInstanceId: string;
   paymentModel: string;
   cplRate: number | null;
 };
@@ -142,13 +143,14 @@ async function getCampaignLinksForPublishers(
       taboolaCampaignExternalId: true,
       paymentModel: true,
       cplRate: true,
-      keitaroCampaign: { select: { externalId: true } },
+      keitaroCampaign: { select: { externalId: true, instanceId: true } },
     },
   });
 
   return links.map((l) => ({
     taboolaCampaignExternalId: l.taboolaCampaignExternalId,
     keitaroCampaignExternalId: l.keitaroCampaign.externalId,
+    keitaroInstanceId: l.keitaroCampaign.instanceId,
     paymentModel: l.paymentModel,
     cplRate: l.cplRate ? Number(l.cplRate) : null,
   }));
@@ -216,62 +218,74 @@ type KeitaroSiteStats = { leads: number; revenue: number };
  * Multiple campaigns are aggregated per site.
  */
 async function getKeitaroStatsBySite(
-  keitaroExternalIds: number[],
+  _keitaroExternalIds: number[],
   links: CampaignLinkInfo[],
   dateFrom?: string,
   dateTo?: string,
 ): Promise<Map<string, KeitaroSiteStats> | null> {
-  if (keitaroExternalIds.length === 0) return new Map();
+  if (links.length === 0) return new Map();
 
-  try {
-    const settings = await getKeitaroSettings();
-    if (!settings.apiUrl || !settings.apiKey) return null;
-
-    const client = new KeitaroClient({
-      apiUrl: settings.apiUrl,
-      apiKey: settings.apiKey,
-    });
-
-    const from = dateFrom ?? "2024-01-01";
-    const to = dateTo ?? todayCrm();
-
-    // Group by campaign_id + sub_id_3 to get exact per-site stats.
-    // sub_id_3 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
-    // Note: sub_id_4 = src_id = {site_id} is empty (Taboola doesn't populate it).
-    const report = await client.buildReport({
-      range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id_3"],
-      metrics: ["conversions", "revenue"],
-      limit: 100_000,
-      offset: 0,
-    });
-
-    const idSet = new Set(keitaroExternalIds);
-
-    const map = new Map<string, KeitaroSiteStats>();
-    for (const row of report.rows) {
-      const campId = Number(row.campaign_id);
-      if (!campId || !idSet.has(campId)) continue;
-
-      const siteId = String(row.sub_id_3 ?? "").trim();
-      if (!siteId) continue;
-
-      const leads = Number(row.conversions ?? 0);
-      const revenue = Number(row.revenue ?? 0);
-
-      const existing = map.get(siteId);
-      if (existing) {
-        existing.leads += leads;
-        existing.revenue += revenue;
-      } else {
-        map.set(siteId, { leads, revenue });
-      }
-    }
-    return map;
-  } catch (err) {
-    console.error("[getKeitaroStatsBySite] Keitaro API error:", err);
-    return null;
+  // Group expected (instanceId, externalId) pairs
+  const idsByInstance = new Map<string, Set<number>>();
+  for (const l of links) {
+    if (!l.keitaroCampaignExternalId) continue;
+    const set = idsByInstance.get(l.keitaroInstanceId) ?? new Set<number>();
+    set.add(l.keitaroCampaignExternalId);
+    idsByInstance.set(l.keitaroInstanceId, set);
   }
+  if (idsByInstance.size === 0) return new Map();
+
+  const instances = (await getKeitaroInstances()).filter(
+    (i) => i.apiUrl && i.apiKey && idsByInstance.has(i.id),
+  );
+  if (instances.length === 0) return null;
+
+  const from = dateFrom ?? "2024-01-01";
+  const to = dateTo ?? todayCrm();
+
+  const map = new Map<string, KeitaroSiteStats>();
+  let anyOk = false;
+
+  for (const instance of instances) {
+    try {
+      const client = new KeitaroClient({
+        apiUrl: instance.apiUrl!,
+        apiKey: instance.apiKey!,
+      });
+      const report = await client.buildReport({
+        range: { from, to, timezone: CRM_TIMEZONE },
+        grouping: ["campaign_id", "sub_id_3"],
+        metrics: ["conversions", "revenue"],
+        limit: 100_000,
+        offset: 0,
+      });
+
+      const idSet = idsByInstance.get(instance.id)!;
+      for (const row of report.rows) {
+        const campId = Number(row.campaign_id);
+        if (!campId || !idSet.has(campId)) continue;
+
+        const siteId = String(row.sub_id_3 ?? "").trim();
+        if (!siteId) continue;
+
+        const leads = Number(row.conversions ?? 0);
+        const revenue = Number(row.revenue ?? 0);
+
+        const existing = map.get(siteId);
+        if (existing) {
+          existing.leads += leads;
+          existing.revenue += revenue;
+        } else {
+          map.set(siteId, { leads, revenue });
+        }
+      }
+      anyOk = true;
+    } catch (err) {
+      console.error(`[getKeitaroStatsBySite] Instance ${instance.id} error:`, err);
+    }
+  }
+
+  return anyOk ? map : null;
 }
 
 // ─── Click distribution helpers ─────────────────────────────────────────────
@@ -680,23 +694,44 @@ export async function getPublisherDailyTrends(
   const revenueByDay = new Map<string, Map<string, { leads: number; revenue: number }>>();
 
   try {
-    const settings = await getKeitaroSettings();
-    if (settings.apiUrl && settings.apiKey) {
-      const links = await prisma.campaignLink.findMany({
-        select: {
-          taboolaCampaignExternalId: true,
-          paymentModel: true,
-          cplRate: true,
-          keitaroCampaign: { select: { externalId: true } },
-        },
-      });
+    const links = await prisma.campaignLink.findMany({
+      select: {
+        taboolaCampaignExternalId: true,
+        paymentModel: true,
+        cplRate: true,
+        keitaroCampaign: { select: { externalId: true, instanceId: true } },
+      },
+    });
 
-      const keitaroIds = Array.from(new Set(links.map((l) => l.keitaroCampaign.externalId)));
-      if (keitaroIds.length > 0) {
-        const client = new KeitaroClient({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
+    // Group expected (instanceId, externalId) pairs
+    const idsByInstance = new Map<string, Set<number>>();
+    for (const l of links) {
+      const set = idsByInstance.get(l.keitaroCampaign.instanceId) ?? new Set<number>();
+      set.add(l.keitaroCampaign.externalId);
+      idsByInstance.set(l.keitaroCampaign.instanceId, set);
+    }
 
-        // Group by day + sub_id_3 for exact per-site daily stats
-        // sub_id_3 = utm_source = {site} (Taboola publisher slug)
+    // Find a CPL rate from any linked campaign (for revenue calculation)
+    let defaultCplRate: number | null = null;
+    let defaultPaymentModel = "CPL";
+    for (const l of links) {
+      if (l.paymentModel === "CPL" && l.cplRate) {
+        defaultCplRate = Number(l.cplRate);
+        defaultPaymentModel = "CPL";
+        break;
+      } else if (l.paymentModel === "CPA") {
+        defaultPaymentModel = "CPA";
+        break;
+      }
+    }
+
+    const instances = (await getKeitaroInstances()).filter(
+      (i) => i.apiUrl && i.apiKey && idsByInstance.has(i.id),
+    );
+
+    for (const instance of instances) {
+      try {
+        const client = new KeitaroClient({ apiUrl: instance.apiUrl!, apiKey: instance.apiKey! });
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
           grouping: ["day", "campaign_id", "sub_id_3"],
@@ -705,21 +740,7 @@ export async function getPublisherDailyTrends(
           offset: 0,
         });
 
-        const idSet = new Set(keitaroIds);
-        // Find a CPL rate from any linked campaign (for revenue calculation)
-        let defaultCplRate: number | null = null;
-        let defaultPaymentModel = "CPL";
-        for (const l of links) {
-          if (l.paymentModel === "CPL" && l.cplRate) {
-            defaultCplRate = Number(l.cplRate);
-            defaultPaymentModel = "CPL";
-            break;
-          } else if (l.paymentModel === "CPA") {
-            defaultPaymentModel = "CPA";
-            break;
-          }
-        }
-
+        const idSet = idsByInstance.get(instance.id)!;
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
@@ -744,6 +765,8 @@ export async function getPublisherDailyTrends(
             revenue: existing.revenue + rev,
           });
         }
+      } catch (err) {
+        console.error(`[getPublisherDailyTrends] Instance ${instance.id} error:`, err);
       }
     }
   } catch (err) {

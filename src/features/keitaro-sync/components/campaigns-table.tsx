@@ -44,6 +44,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
         <thead>
           <tr className="border-b border-white/[0.06] text-left text-xs font-medium uppercase tracking-wider text-slate-400">
             <th className="px-4 py-3">ID</th>
+            <th className="px-4 py-3">Instance</th>
             <th className="px-4 py-3">Name</th>
             <th className="px-4 py-3">Alias</th>
             <th className="px-4 py-3">Group</th>
@@ -59,6 +60,11 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
             >
               <td className="whitespace-nowrap px-4 py-3 text-xs font-mono text-slate-400">
                 {c.externalId}
+              </td>
+              <td className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
+                  {c.instanceName}
+                </span>
               </td>
               <td className="px-4 py-3 text-sm text-slate-200">
                 {c.name}

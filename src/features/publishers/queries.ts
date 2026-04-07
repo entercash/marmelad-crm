@@ -193,19 +193,19 @@ async function getSiteCampaignAssociations(
   return map;
 }
 
-// ─── Keitaro stats by site (exact matching via sub_id_3 = site slug) ─────────
+// ─── Keitaro stats by site (exact matching via sub_id_1 = site slug) ─────────
 
 type KeitaroSiteStats = { leads: number; revenue: number };
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id_3.
- * sub_id_3 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
+ * sub_id_1 = utm_source = {site} = Taboola site slug (e.g. "reach-express").
  * Note: sub_id_4 = {site_id} is empty — Taboola doesn't populate numeric site_id.
  *
  * Keitaro sub_id mapping (configured per-campaign in Keitaro):
  *   sub_id_1 = cid          = {campaign_id}
  *   sub_id_2 = utm_content  = {campaign_item_id}
- *   sub_id_3 = utm_source   = {site}           (publisher name) ← used for matching
+ *   sub_id_1 = utm_source   = {site}           (publisher name) ← used for matching
  *   sub_id_4 = sid          = {site_id}         (publisher numeric ID)
  *   sub_id_5 = utm_medium   = {platform}
  *   sub_id_6 = geo          = {country}
@@ -254,7 +254,7 @@ async function getKeitaroStatsBySite(
       });
       const report = await client.buildReport({
         range: { from, to, timezone: CRM_TIMEZONE },
-        grouping: ["campaign_id", "sub_id_3"],
+        grouping: ["campaign_id", "sub_id_1"],
         metrics: ["conversions", "revenue"],
         limit: 100_000,
         offset: 0,
@@ -265,7 +265,7 @@ async function getKeitaroStatsBySite(
         const campId = Number(row.campaign_id);
         if (!campId || !idSet.has(campId)) continue;
 
-        const siteId = String(row.sub_id_3 ?? "").trim();
+        const siteId = String(row.sub_id_1 ?? "").trim();
         if (!siteId) continue;
 
         const leads = Number(row.conversions ?? 0);
@@ -552,7 +552,7 @@ export async function getPublisherStats(params: {
   const siteIds = rawRows.map((r) => r.siteExternalId);
   const siteCampaigns = await getSiteCampaignAssociations(siteIds, undefined, dateFrom, dateTo);
 
-  // 5. Keitaro exact matching by sub_id_3 (site slug) + Adspect
+  // 5. Keitaro exact matching by sub_id_1 (site slug) + Adspect
   const keitaroExternalIds = Array.from(new Set(links.map((l) => Number(l.keitaroCampaignExternalId)).filter(Boolean)));
 
   const [keitaroSiteStats, adspectStats] =
@@ -734,7 +734,7 @@ export async function getPublisherDailyTrends(
         const client = new KeitaroClient({ apiUrl: instance.apiUrl!, apiKey: instance.apiKey! });
         const report = await client.buildReport({
           range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-          grouping: ["day", "campaign_id", "sub_id_3"],
+          grouping: ["day", "campaign_id", "sub_id_1"],
           metrics: ["conversions", "revenue"],
           limit: 100_000,
           offset: 0,
@@ -744,7 +744,7 @@ export async function getPublisherDailyTrends(
         for (const row of report.rows) {
           const campId = Number(row.campaign_id);
           const day = String(row.day ?? "").trim();
-          const siteId = String(row.sub_id_3 ?? "").trim();
+          const siteId = String(row.sub_id_1 ?? "").trim();
           if (!campId || !day || !siteId || !idSet.has(campId)) continue;
 
           const leads = Number(row.conversions ?? 0);

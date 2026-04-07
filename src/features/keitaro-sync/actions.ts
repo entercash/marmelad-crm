@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma }     from "@/lib/prisma";
 import { guardWrite } from "@/lib/auth-guard";
 import { KeitaroClient } from "@/integrations/keitaro/client";
-import type { KeitaroConfig } from "@/integrations/keitaro/client";
-import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { getKeitaroInstances } from "@/features/integration-settings/queries";
 
 // ─── Result type ────────────────────────────────────────────────────────────
 
@@ -20,18 +19,15 @@ export async function syncKeitaroCampaigns(): Promise<SyncCampaignsResult> {
   const denied = await guardWrite();
   if (denied) return { success: false, error: !denied.success ? denied.error : "Access denied" };
 
-  // Load config
-  const settings = await getKeitaroSettings();
-  if (!settings.apiUrl || !settings.apiKey) {
+  // Load all configured Keitaro instances
+  const instances = (await getKeitaroInstances()).filter(
+    (inst) => inst.apiUrl && inst.apiKey,
+  );
+  if (instances.length === 0) {
     return { success: false, error: "Keitaro is not configured. Go to Settings to add API credentials." };
   }
 
-  const config: KeitaroConfig = {
-    apiUrl: settings.apiUrl,
-    apiKey: settings.apiKey,
-  };
-
-  // Create SyncLog
+  // Create a single SyncLog for the whole operation
   const syncLog = await prisma.syncLog.create({
     data: {
       source:     "keitaro",
@@ -41,79 +37,110 @@ export async function syncKeitaroCampaigns(): Promise<SyncCampaignsResult> {
     },
   });
 
+  let totalFetched = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  let totalDeleted = 0;
+  const errors: string[] = [];
+
   try {
-    // Fetch campaigns from Keitaro API
-    const client = new KeitaroClient(config);
-    const campaigns = await client.getCampaigns();
-
-    // Upsert each campaign
-    let created = 0;
-    let updated = 0;
-
-    for (const c of campaigns) {
-      const existing = await prisma.keitaroCampaign.findUnique({
-        where: { externalId: c.id },
-      });
-
-      if (existing) {
-        await prisma.keitaroCampaign.update({
-          where: { externalId: c.id },
-          data: {
-            name:      c.name,
-            alias:     c.alias,
-            state:     c.state,
-            groupId:   c.group_id ?? null,
-            syncLogId: syncLog.id,
-          },
+    for (const instance of instances) {
+      try {
+        const client = new KeitaroClient({
+          apiUrl: instance.apiUrl!,
+          apiKey: instance.apiKey!,
         });
-        updated++;
-      } else {
-        await prisma.keitaroCampaign.create({
-          data: {
-            externalId: c.id,
-            name:       c.name,
-            alias:      c.alias,
-            state:      c.state,
-            groupId:    c.group_id ?? null,
-            syncLogId:  syncLog.id,
-          },
+        const campaigns = await client.getCampaigns();
+        totalFetched += campaigns.length;
+
+        // Upsert each campaign scoped to this instance
+        for (const c of campaigns) {
+          const existing = await prisma.keitaroCampaign.findUnique({
+            where: {
+              instanceId_externalId: {
+                instanceId: instance.id,
+                externalId: c.id,
+              },
+            },
+          });
+
+          if (existing) {
+            await prisma.keitaroCampaign.update({
+              where: { id: existing.id },
+              data: {
+                name:      c.name,
+                alias:     c.alias,
+                state:     c.state,
+                groupId:   c.group_id ?? null,
+                syncLogId: syncLog.id,
+              },
+            });
+            totalUpdated++;
+          } else {
+            await prisma.keitaroCampaign.create({
+              data: {
+                instanceId: instance.id,
+                externalId: c.id,
+                name:       c.name,
+                alias:      c.alias,
+                state:      c.state,
+                groupId:    c.group_id ?? null,
+                syncLogId:  syncLog.id,
+              },
+            });
+            totalCreated++;
+          }
+        }
+
+        // Delete only this instance's campaigns that no longer exist
+        const remoteIds = new Set(campaigns.map((c) => c.id));
+        const localCampaigns = await prisma.keitaroCampaign.findMany({
+          where: { instanceId: instance.id },
+          select: { id: true, externalId: true },
         });
-        created++;
+        const toDelete = localCampaigns
+          .filter((lc) => !remoteIds.has(lc.externalId))
+          .map((lc) => lc.id);
+
+        if (toDelete.length > 0) {
+          const result = await prisma.keitaroCampaign.deleteMany({
+            where: { id: { in: toDelete } },
+          });
+          totalDeleted += result.count;
+        }
+      } catch (instanceErr) {
+        const msg = instanceErr instanceof Error ? instanceErr.message : "Unknown error";
+        errors.push(`${instance.name}: ${msg}`);
+        console.error(`[syncKeitaroCampaigns] Instance ${instance.id} failed:`, instanceErr);
       }
-    }
-
-    // Delete campaigns that no longer exist in Keitaro
-    const remoteIds = new Set(campaigns.map((c) => c.id));
-    const localCampaigns = await prisma.keitaroCampaign.findMany({
-      select: { externalId: true },
-    });
-    const toDelete = localCampaigns
-      .filter((lc) => !remoteIds.has(lc.externalId))
-      .map((lc) => lc.externalId);
-
-    let deleted = 0;
-    if (toDelete.length > 0) {
-      const result = await prisma.keitaroCampaign.deleteMany({
-        where: { externalId: { in: toDelete } },
-      });
-      deleted = result.count;
     }
 
     // Complete SyncLog
     await prisma.syncLog.update({
       where: { id: syncLog.id },
       data: {
-        status:          "SUCCESS",
+        status:          errors.length === instances.length ? "FAILED" : "SUCCESS",
         finishedAt:      new Date(),
-        recordsFetched:  campaigns.length,
-        recordsInserted: created,
-        recordsUpdated:  updated,
+        recordsFetched:  totalFetched,
+        recordsInserted: totalCreated,
+        recordsUpdated:  totalUpdated,
+        errorMessage:    errors.length > 0 ? errors.join("; ") : null,
       },
     });
 
     revalidatePath("/integrations/keitaro");
 
-    return { success: true, total: campaigns.length, created, updated, deleted };
+    if (errors.length === instances.length) {
+      return { success: false, error: errors.join("; ") };
+    }
+
+    return {
+      success: true,
+      total: totalFetched,
+      created: totalCreated,
+      updated: totalUpdated,
+      deleted: totalDeleted,
+    };
   } catch (err) {
     console.error("[syncKeitaroCampaigns] Failed:", err);
 

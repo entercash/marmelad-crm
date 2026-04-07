@@ -1,15 +1,18 @@
 import { prisma } from "@/lib/prisma";
+import { getKeitaroInstances } from "@/features/integration-settings/queries";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface KeitaroCampaignRow {
-  id:         string;
-  externalId: number;
-  name:       string;
-  alias:      string;
-  state:      string;
-  groupId:    number | null;
-  updatedAt:  Date;
+  id:           string;
+  externalId:   number;
+  name:         string;
+  alias:        string;
+  state:        string;
+  groupId:      number | null;
+  instanceId:   string;
+  instanceName: string;
+  updatedAt:    Date;
 }
 
 export interface KeitaroSyncStats {
@@ -36,19 +39,25 @@ export interface KeitaroSyncHistoryRow {
 export async function getKeitaroCampaigns(
   stateFilter?: string,
 ): Promise<KeitaroCampaignRow[]> {
-  const campaigns = await prisma.keitaroCampaign.findMany({
-    where: stateFilter ? { state: stateFilter } : undefined,
-    orderBy: [{ state: "asc" }, { name: "asc" }],
-  });
+  const [campaigns, instances] = await Promise.all([
+    prisma.keitaroCampaign.findMany({
+      where: stateFilter ? { state: stateFilter } : undefined,
+      orderBy: [{ instanceId: "asc" }, { state: "asc" }, { name: "asc" }],
+    }),
+    getKeitaroInstances(),
+  ]);
+  const instanceNameMap = new Map(instances.map((i) => [i.id, i.name || i.id]));
 
   return campaigns.map((c) => ({
-    id:         c.id,
-    externalId: c.externalId,
-    name:       c.name,
-    alias:      c.alias,
-    state:      c.state,
-    groupId:    c.groupId,
-    updatedAt:  c.updatedAt,
+    id:           c.id,
+    externalId:   c.externalId,
+    name:         c.name,
+    alias:        c.alias,
+    state:        c.state,
+    groupId:      c.groupId,
+    instanceId:   c.instanceId,
+    instanceName: instanceNameMap.get(c.instanceId) ?? c.instanceId,
+    updatedAt:    c.updatedAt,
   }));
 }
 

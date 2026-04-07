@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KeitaroClient } from "@/integrations/keitaro/client";
-import { getKeitaroSettings } from "@/features/integration-settings/queries";
+import { getKeitaroInstances } from "@/features/integration-settings/queries";
 import { CRM_TIMEZONE, todayCrm } from "@/lib/date";
 import { FX_TO_USD_CASE } from "@/lib/spend-queries";
 
@@ -18,6 +18,8 @@ export type KeitaroCampaignOption = {
   alias: string;
   name: string;
   state: string;
+  instanceId: string;
+  instanceName: string;
 };
 
 export type CampaignLinkRow = {
@@ -27,6 +29,7 @@ export type CampaignLinkRow = {
   keitaroCampaignId: string;
   keitaroCampaignExternalId: number;
   keitaroCampaignName: string;
+  keitaroInstanceId: string;
   paymentModel: string;
   cplRate: number | null;
   country: string | null;
@@ -83,13 +86,20 @@ export async function getDistinctTaboolaCampaigns(): Promise<TaboolaCampaignOpti
   }));
 }
 
-/** Get Keitaro campaigns for mapping dropdown. */
+/** Get Keitaro campaigns for mapping dropdown (across all instances). */
 export async function getKeitaroCampaignOptions(): Promise<KeitaroCampaignOption[]> {
-  const campaigns = await prisma.keitaroCampaign.findMany({
-    orderBy: [{ state: "asc" }, { name: "asc" }],
-    select: { id: true, externalId: true, alias: true, name: true, state: true },
-  });
-  return campaigns;
+  const [campaigns, instances] = await Promise.all([
+    prisma.keitaroCampaign.findMany({
+      orderBy: [{ state: "asc" }, { name: "asc" }],
+      select: { id: true, externalId: true, alias: true, name: true, state: true, instanceId: true },
+    }),
+    getKeitaroInstances(),
+  ]);
+  const instanceNameMap = new Map(instances.map((i) => [i.id, i.name || i.id]));
+  return campaigns.map((c) => ({
+    ...c,
+    instanceName: instanceNameMap.get(c.instanceId) ?? c.instanceId,
+  }));
 }
 
 // ─── Link queries ───────────────────────────────────────────────────────────
@@ -99,7 +109,7 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
   const links = await prisma.campaignLink.findMany({
     orderBy: { createdAt: "desc" },
     include: {
-      keitaroCampaign: { select: { externalId: true, name: true } },
+      keitaroCampaign: { select: { externalId: true, name: true, instanceId: true } },
     },
   });
 
@@ -110,6 +120,7 @@ export async function getCampaignLinks(): Promise<CampaignLinkRow[]> {
     keitaroCampaignId: l.keitaroCampaignId,
     keitaroCampaignExternalId: l.keitaroCampaign.externalId,
     keitaroCampaignName: l.keitaroCampaign.name,
+    keitaroInstanceId: l.keitaroCampaign.instanceId,
     paymentModel: l.paymentModel,
     cplRate: l.cplRate ? Number(l.cplRate) : null,
     country: l.country,
@@ -163,90 +174,100 @@ async function getTaboolaStatsByCampaign(
 }
 
 /** Fetch Keitaro stats from Reports API for mapped campaigns. Returns null on error. */
-type KeitaroStatsKey = string; // "keitaroCampaignId:taboolaExternalId" or "keitaroCampaignId"
+// Keys include instanceId to disambiguate same externalId across multiple Keitaro instances.
+type KeitaroStatsKey = string; // "instanceId:campaignId:taboolaExternalId" | "instanceId:campaignId"
 type KeitaroStatsValue = { clicks: number; leads: number; sales: number; revenue: number };
 
 /**
- * Fetch Keitaro stats grouped by campaign_id + sub_id_1.
- * sub_id_1 contains the Taboola campaign ID passed via tracking link parameters.
+ * Fetch Keitaro stats grouped by campaign_id + sub_id_1, across ALL configured instances.
  *
- * Returns two maps:
- * - exact: keyed by "keitaroCampaignId:taboolaCampaignId" (when sub_id_1 matches)
- * - byCampaign: keyed by "keitaroCampaignId" (aggregated fallback for old traffic)
+ * Returns two maps (keys include instanceId to disambiguate between instances):
+ * - exact: keyed by "instanceId:keitaroCampaignId:taboolaCampaignId"
+ * - byCampaign: keyed by "instanceId:keitaroCampaignId" (aggregated fallback)
  */
 async function getKeitaroStatsForCampaigns(
-  keitaroExternalIds: number[],
+  wantedPairs: { instanceId: string; externalId: number }[],
   taboolaExternalIds: string[],
   dateFrom: string,
   dateTo: string,
 ): Promise<{ exact: Map<KeitaroStatsKey, KeitaroStatsValue>; byCampaign: Map<string, KeitaroStatsValue> } | null> {
-  if (keitaroExternalIds.length === 0) return { exact: new Map(), byCampaign: new Map() };
+  const exact = new Map<KeitaroStatsKey, KeitaroStatsValue>();
+  const byCampaign = new Map<string, KeitaroStatsValue>();
+  if (wantedPairs.length === 0) return { exact, byCampaign };
 
-  try {
-    const settings = await getKeitaroSettings();
-    if (!settings.apiUrl || !settings.apiKey) return null;
+  // Group wanted campaign IDs per instance
+  const perInstance = new Map<string, Set<number>>();
+  for (const p of wantedPairs) {
+    const set = perInstance.get(p.instanceId) ?? new Set<number>();
+    set.add(p.externalId);
+    perInstance.set(p.instanceId, set);
+  }
 
-    const client = new KeitaroClient({
-      apiUrl: settings.apiUrl,
-      apiKey: settings.apiKey,
-    });
+  const instances = await getKeitaroInstances();
+  const taboolaIdSet = new Set(taboolaExternalIds);
+  let anyOk = false;
 
-    // Group by campaign_id + sub_id_1 to get exact per-Taboola-campaign stats.
-    // sub_id_1 = Taboola campaign ID (passed via {campaign_id} macro in tracking URL).
-    const report = await client.buildReport({
-      range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "sub_id_1"],
-      metrics: ["clicks", "conversions", "sales", "revenue"],
-      limit: 100_000,
-      offset: 0,
-    });
+  for (const instance of instances) {
+    const wanted = perInstance.get(instance.id);
+    if (!wanted || wanted.size === 0) continue;
+    if (!instance.apiUrl || !instance.apiKey) continue;
 
-    const keitaroIdSet = new Set(keitaroExternalIds);
-    const taboolaIdSet = new Set(taboolaExternalIds);
-    const exact = new Map<KeitaroStatsKey, KeitaroStatsValue>();
-    const byCampaign = new Map<string, KeitaroStatsValue>();
+    try {
+      const client = new KeitaroClient({
+        apiUrl: instance.apiUrl,
+        apiKey: instance.apiKey,
+      });
 
-    for (const row of report.rows) {
-      const campId = Number(row.campaign_id);
-      if (!campId || !keitaroIdSet.has(campId)) continue;
+      const report = await client.buildReport({
+        range: { from: dateFrom, to: dateTo, timezone: CRM_TIMEZONE },
+        grouping: ["campaign_id", "sub_id_1"],
+        metrics: ["clicks", "conversions", "sales", "revenue"],
+        limit: 100_000,
+        offset: 0,
+      });
+      anyOk = true;
 
-      const clicks = Number(row.clicks ?? 0);
-      const leads = Number(row.conversions ?? 0);
-      const sales = Number(row.sales ?? 0);
-      const revenue = Number(row.revenue ?? 0);
+      for (const row of report.rows) {
+        const campId = Number(row.campaign_id);
+        if (!campId || !wanted.has(campId)) continue;
 
-      // Always aggregate by campaign (fallback)
-      const campKey = String(campId);
-      const campExisting = byCampaign.get(campKey);
-      if (campExisting) {
-        campExisting.clicks += clicks;
-        campExisting.leads += leads;
-        campExisting.sales += sales;
-        campExisting.revenue += revenue;
-      } else {
-        byCampaign.set(campKey, { clicks, leads, sales, revenue });
-      }
+        const clicks = Number(row.clicks ?? 0);
+        const leads = Number(row.conversions ?? 0);
+        const sales = Number(row.sales ?? 0);
+        const revenue = Number(row.revenue ?? 0);
 
-      // Exact match via sub_id_1
-      const subId = String(row.sub_id_1 ?? "").trim();
-      if (subId && taboolaIdSet.has(subId)) {
-        const exactKey = `${campId}:${subId}`;
-        const exactExisting = exact.get(exactKey);
-        if (exactExisting) {
-          exactExisting.clicks += clicks;
-          exactExisting.leads += leads;
-          exactExisting.sales += sales;
-          exactExisting.revenue += revenue;
+        const campKey = `${instance.id}:${campId}`;
+        const campExisting = byCampaign.get(campKey);
+        if (campExisting) {
+          campExisting.clicks += clicks;
+          campExisting.leads += leads;
+          campExisting.sales += sales;
+          campExisting.revenue += revenue;
         } else {
-          exact.set(exactKey, { clicks, leads, sales, revenue });
+          byCampaign.set(campKey, { clicks, leads, sales, revenue });
+        }
+
+        const subId = String(row.sub_id_1 ?? "").trim();
+        if (subId && taboolaIdSet.has(subId)) {
+          const exactKey = `${instance.id}:${campId}:${subId}`;
+          const exactExisting = exact.get(exactKey);
+          if (exactExisting) {
+            exactExisting.clicks += clicks;
+            exactExisting.leads += leads;
+            exactExisting.sales += sales;
+            exactExisting.revenue += revenue;
+          } else {
+            exact.set(exactKey, { clicks, leads, sales, revenue });
+          }
         }
       }
+    } catch (err) {
+      console.error(`[getKeitaroStatsForCampaigns] Instance ${instance.id} error:`, err);
     }
-    return { exact, byCampaign };
-  } catch (err) {
-    console.error("[getKeitaroStatsForCampaigns] Keitaro API error:", err);
-    return null;
   }
+
+  if (!anyOk) return null;
+  return { exact, byCampaign };
 }
 
 /** Get commission multiplier per campaign via Campaign → AdAccount → Account → Agency chain. */
@@ -295,51 +316,59 @@ export async function getCampaignLinkDailyRevenue(
     const links = await getCampaignLinks();
     if (links.length === 0) return result;
 
-    const settings = await getKeitaroSettings();
-    if (!settings.apiUrl || !settings.apiKey) return result;
-
-    const client = new KeitaroClient({
-      apiUrl: settings.apiUrl,
-      apiKey: settings.apiKey,
-    });
+    const instances = (await getKeitaroInstances()).filter(
+      (i) => i.apiUrl && i.apiKey,
+    );
+    if (instances.length === 0) return result;
 
     const from = dateFrom ?? "2024-01-01";
     const to = dateTo ?? todayCrm();
 
-    const report = await client.buildReport({
-      range: { from, to, timezone: CRM_TIMEZONE },
-      grouping: ["campaign_id", "day"],
-      metrics: ["conversions", "sales", "revenue"],
-      limit: 50_000,
-      offset: 0,
-    });
-
-    // Build a quick lookup: keitaroExternalId → { paymentModel, cplRate }
-    const linkMap = new Map<number, { paymentModel: string; cplRate: number | null }>();
+    // Build lookup per (instanceId, externalId) → payment info
+    const linkMap = new Map<string, { paymentModel: string; cplRate: number | null }>();
     for (const l of links) {
-      linkMap.set(l.keitaroCampaignExternalId, {
+      linkMap.set(`${l.keitaroInstanceId}:${l.keitaroCampaignExternalId}`, {
         paymentModel: l.paymentModel,
         cplRate: l.cplRate,
       });
     }
 
-    for (const row of report.rows) {
-      const campId = Number(row.campaign_id);
-      const day = row.day as string | undefined;
-      if (!campId || !day) continue;
+    for (const instance of instances) {
+      try {
+        const client = new KeitaroClient({
+          apiUrl: instance.apiUrl!,
+          apiKey: instance.apiKey!,
+        });
 
-      const link = linkMap.get(campId);
-      if (!link) continue;
+        const report = await client.buildReport({
+          range: { from, to, timezone: CRM_TIMEZONE },
+          grouping: ["campaign_id", "day"],
+          metrics: ["conversions", "sales", "revenue"],
+          limit: 50_000,
+          offset: 0,
+        });
 
-      let revenue = 0;
-      if (link.paymentModel === "CPL" && link.cplRate !== null) {
-        revenue = Number(row.conversions ?? 0) * link.cplRate;
-      } else if (link.paymentModel === "CPA") {
-        revenue = Number(row.revenue ?? 0);
-      }
+        for (const row of report.rows) {
+          const campId = Number(row.campaign_id);
+          const day = row.day as string | undefined;
+          if (!campId || !day) continue;
 
-      if (revenue > 0) {
-        result.set(day, (result.get(day) ?? 0) + revenue);
+          const link = linkMap.get(`${instance.id}:${campId}`);
+          if (!link) continue;
+
+          let revenue = 0;
+          if (link.paymentModel === "CPL" && link.cplRate !== null) {
+            revenue = Number(row.conversions ?? 0) * link.cplRate;
+          } else if (link.paymentModel === "CPA") {
+            revenue = Number(row.revenue ?? 0);
+          }
+
+          if (revenue > 0) {
+            result.set(day, (result.get(day) ?? 0) + revenue);
+          }
+        }
+      } catch (instErr) {
+        console.error(`[getCampaignLinkDailyRevenue] Instance ${instance.id} error:`, instErr);
       }
     }
   } catch (err) {
@@ -390,19 +419,27 @@ export async function getCampaignLinkStats(
   ]);
 
   // Keitaro stats — grouped by campaign_id + sub_id for exact per-Taboola matching
-  const keitaroIdSet = new Set(links.map((l) => l.keitaroCampaignExternalId));
-  const keitaroIds = Array.from(keitaroIdSet);
+  // Deduplicate by (instanceId, externalId) pair since same externalId may exist in multiple instances
+  const pairSeen = new Set<string>();
+  const wantedPairs: { instanceId: string; externalId: number }[] = [];
+  for (const l of links) {
+    const k = `${l.keitaroInstanceId}:${l.keitaroCampaignExternalId}`;
+    if (pairSeen.has(k)) continue;
+    pairSeen.add(k);
+    wantedPairs.push({ instanceId: l.keitaroInstanceId, externalId: l.keitaroCampaignExternalId });
+  }
   const from = dateFrom ?? "2024-01-01";
   const to = dateTo ?? todayCrm();
   let keitaroResult: { exact: Map<string, KeitaroStatsValue>; byCampaign: Map<string, KeitaroStatsValue> } | null = null;
-  if (keitaroIds.length > 0) {
-    keitaroResult = await getKeitaroStatsForCampaigns(keitaroIds, taboolaIds, from, to);
+  if (wantedPairs.length > 0) {
+    keitaroResult = await getKeitaroStatsForCampaigns(wantedPairs, taboolaIds, from, to);
   }
 
-  // Count how many links share the same Keitaro campaign (for fallback distribution)
-  const linksPerKeitaro = new Map<number, number>();
+  // Count how many links share the same (instance, Keitaro campaign) pair
+  const linksPerKeitaro = new Map<string, number>();
   for (const l of links) {
-    linksPerKeitaro.set(l.keitaroCampaignExternalId, (linksPerKeitaro.get(l.keitaroCampaignExternalId) ?? 0) + 1);
+    const k = `${l.keitaroInstanceId}:${l.keitaroCampaignExternalId}`;
+    linksPerKeitaro.set(k, (linksPerKeitaro.get(k) ?? 0) + 1);
   }
 
   // Merge — prefer exact sub_id match, fall back to campaign-level
@@ -410,11 +447,12 @@ export async function getCampaignLinkStats(
     const ts = taboolaStats.get(link.taboolaCampaignExternalId);
 
     // Try exact match first (sub_id_1 = Taboola campaign ID)
-    const ksKey = `${link.keitaroCampaignExternalId}:${link.taboolaCampaignExternalId}`;
+    const ksKey = `${link.keitaroInstanceId}:${link.keitaroCampaignExternalId}:${link.taboolaCampaignExternalId}`;
     const exactKs = keitaroResult?.exact.get(ksKey) ?? null;
     // Fallback: campaign-level stats (only if this is the sole link for this Keitaro campaign)
-    const campaignKs = keitaroResult?.byCampaign.get(String(link.keitaroCampaignExternalId)) ?? null;
-    const linkCount = linksPerKeitaro.get(link.keitaroCampaignExternalId) ?? 1;
+    const campKey = `${link.keitaroInstanceId}:${link.keitaroCampaignExternalId}`;
+    const campaignKs = keitaroResult?.byCampaign.get(campKey) ?? null;
+    const linkCount = linksPerKeitaro.get(campKey) ?? 1;
     const ks = exactKs ?? (linkCount === 1 ? campaignKs : null);
 
     const rawSpend = ts?.spend ?? 0;

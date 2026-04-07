@@ -901,7 +901,8 @@ model IntegrationSetting {
 /// Used for mapping Taboola campaigns ↔ Keitaro campaigns in CampaignMapping.
 model KeitaroCampaign {
   id         String   @id @default(cuid())
-  externalId Int      @unique // Keitaro campaign ID (integer)
+  instanceId String   @default("default") // Keitaro instance identifier
+  externalId Int      // Keitaro campaign ID (unique per instance)
   name       String
   alias      String
   state      String           // "active", "disabled", "deleted"
@@ -912,7 +913,9 @@ model KeitaroCampaign {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@unique([instanceId, externalId])
   @@index([state])
+  @@index([instanceId])
   @@map("keitaro_campaigns")
 }
 

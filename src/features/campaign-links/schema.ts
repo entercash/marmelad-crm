@@ -23,7 +23,8 @@ export const campaignLinkSchema = z
     cplRate: z
       .string()
       .transform((v) => (v.trim() === "" ? null : v.trim()))
-      .nullable(),
+      .nullable()
+      .optional(),
     country: z
       .string()
       .transform((v) => (v.trim() === "" ? null : v.trim().toUpperCase()))
